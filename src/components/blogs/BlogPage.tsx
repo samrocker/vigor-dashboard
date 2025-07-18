@@ -254,7 +254,7 @@ const BlogDetailPage = () => {
     optionalUpdateData.status = updatedBlogStatus;
 
     try {
-      let finalBlogData: BlogData = {
+      const finalBlogData: BlogData = {
         ...optionalUpdateData,
         title: updatedBlogTitle,
         content: updatedBlogContent,
