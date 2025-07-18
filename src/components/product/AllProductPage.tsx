@@ -111,6 +111,9 @@ function formatDate(dateString: string | null) {
 
 function getTextSnippetFromHtml(html: string, maxLength: number = 100): string {
   if (!html) return 'No content';
+  if (typeof window === 'undefined') {
+    return 'Content not available on server';
+  }
   try {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const textContent = doc.body.textContent || '';
