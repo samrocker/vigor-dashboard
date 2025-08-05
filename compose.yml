@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  nextjs:
+    container_name: vigor-Dashboard-Frontend
+    build: .
+    ports:
+      - "2222:2222"
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped

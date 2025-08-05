@@ -1,0 +1,121 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 98%; /* Very Soft Cool Gray */
+    --foreground: 222 47% 12%; /* Deep Neutral */
+
+    --card: 0 0% 100%; /* Pure White */
+    --card-foreground: 222 47% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 12%;
+
+    --primary: 240 60% 60%; /* Indigo */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 30% 96%; /* Light Gray Blue */
+    --secondary-foreground: 222 47% 12%;
+
+    --muted: 210 20% 90%; /* Muted Gray Blue */
+    --muted-foreground: 222 10% 40%;
+
+    --accent: 170 100% 40%; /* Mint Green */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 85% 60%; /* Soft Red */
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 85%;
+    --input: 220 13% 85%;
+    --ring: 240 60% 60%;
+
+    --chart-1: 240 60% 60%; /* Indigo */
+    --chart-2: 170 100% 40%; /* Mint */
+    --chart-3: 35 100% 60%; /* Amber */
+    --chart-4: 320 70% 60%; /* Rose */
+    --chart-5: 200 100% 60%; /* Sky Blue */
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222 47% 6%; /* Rich Charcoal */
+    --foreground: 0 0% 95%; /* Soft White */
+
+    --card: 222 47% 10%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 222 47% 10%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 240 60% 65%; /* Brightened Indigo */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 222 15% 20%; /* Deep Gray Blue */
+    --secondary-foreground: 0 0% 95%;
+
+    --muted: 222 10% 14%; /* Muted Charcoal */
+    --muted-foreground: 0 0% 65%;
+
+    --accent: 170 100% 45%; /* Vivid Mint */
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 90% 55%; /* Punchy Red */
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 222 10% 25%;
+    --input: 222 10% 25%;
+    --ring: 240 60% 65%;
+
+    --chart-1: 240 60% 65%; /* Indigo */
+    --chart-2: 170 100% 45%; /* Mint */
+    --chart-3: 35 95% 50%; /* Amber */
+    --chart-4: 320 80% 65%; /* Rose */
+    --chart-5: 200 100% 65%; /* Sky Blue */
+  }
+}
+
+@layer utilities {
+  .flex-center {
+    @apply flex justify-center items-center;
+  }
+
+  .flex-between {
+    @apply flex justify-between items-center;
+  }
+
+  .flex-start {
+    @apply flex justify-start items-center;
+  }
+
+  .flex-end {
+    @apply flex justify-end items-center;
+  }
+
+  .wrapper {
+    padding: 2rem 3rem;
+  }
+
+  .label {
+    font-size: 1rem;
+    font-weight: 500;
+  }
+  .editor {
+    margin-top: 1rem;
+    height: 500px;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
