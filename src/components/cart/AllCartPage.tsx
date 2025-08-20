@@ -513,8 +513,6 @@ const AllCartsPage = () => {
           </motion.div>
         )}
 
-        {/* Controls: Search and Refresh */}
-        <motion.div variants={cardVariants} whileHover="hover">
           <Card className="mb-8 p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
               <div className="relative w-full sm:w-auto flex-1">
@@ -547,9 +545,6 @@ const AllCartsPage = () => {
               </div>
             </div>
           </Card>
-        </motion.div>
-
-        {/* Removed Error Message display block */}
 
         {/* Carts Table */}
         {loading ? (

@@ -10,19 +10,15 @@ import {
   Filter,
   ArrowUp,
   ArrowDown,
-  Eye, // For 'View Image Details'
-  Info, // For error/empty state - KEPT FOR "NO IMAGES FOUND" SCENARIO
-  Plus, // For Add Image
-  Edit, // For Edit Image
-  Trash2, // For Delete Image
-  CheckCircle, // For true boolean status
-  XCircle, // For false boolean status
-  HardDrive, // For associations
+  Eye, 
+  Info,
+  Plus,
+  Edit, 
+  Trash2, 
+  CheckCircle,
 } from "lucide-react";
 import { getAccessToken } from "@/lib/auth";
 import { ApiResponse, axiosInstance } from "@/lib/axios";
-
-// Shadcn UI components
 import {
   Card,
   CardHeader,
@@ -49,8 +45,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  SelectGroup, // Added for better structure with search
-  SelectLabel, // Added for better structure with search
 } from "@/components/ui/select";
 import {
   Dialog,
@@ -60,10 +54,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Skeleton } from "@/components/ui/skeleton"; // Added Skeleton import
-import { motion } from "framer-motion"; // Added motion import
+import { Skeleton } from "@/components/ui/skeleton"; 
+import { motion } from "framer-motion";
 
 // --- Type Definitions ---
 interface Image {
@@ -113,7 +106,6 @@ function formatDate(dateString: string | null) {
 const AllImagesPage = () => {
   const [allImages, setAllImages] = useState<Image[]>([]);
   const [loading, setLoading] = useState(true);
-  // Removed error state: const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalImagesCount, setTotalImagesCount] = useState(0);
@@ -152,6 +144,7 @@ const AllImagesPage = () => {
     isLogo: false,
     isIcon: false,
   });
+  const [createErrors, setCreateErrors] = useState<{ [key: string]: string }>({});
   const [selectedCreateAssociationType, setSelectedCreateAssociationType] =
     useState<"none" | "productId" | "categoryId" | "subCategoryId" | "blogId">(
       "none"
@@ -178,6 +171,7 @@ const AllImagesPage = () => {
     isLogo: false,
     isIcon: false,
   });
+  const [updateErrors, setUpdateErrors] = useState<{ [key: string]: string }>({});
   const [selectedUpdateAssociationType, setSelectedUpdateAssociationType] =
     useState<"none" | "productId" | "categoryId" | "subCategoryId" | "blogId">(
       "none"
@@ -212,10 +206,9 @@ const AllImagesPage = () => {
       const data = response.data.data;
       setAllImages(data?.images || []);
       setTotalImagesCount(data?.total || 0);
-      // Removed setError(null);
     } catch (err: any) {
       setAllImages([]);
-      toast.error(err.message || "Failed to fetch images. Please try again."); // Display toast error
+      toast.error(err.response?.data?.message || "Failed to fetch images. Please try again.");
       console.error("Fetch images error:", err);
     } finally {
       setLoading(false);
@@ -243,9 +236,9 @@ const AllImagesPage = () => {
         { id: "blog-1", name: "First Blog Post" },
         { id: "blog-2", name: "Another Blog Entry" },
       ]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to fetch entity options:", error);
-      toast.error("Failed to load options for filters/forms.");
+      toast.error(error.response?.data?.message || "Failed to load options for filters/forms.");
     }
   }, []);
 
@@ -428,14 +421,42 @@ const AllImagesPage = () => {
 
   const handleCreateImage = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsCreating(true);
-    // Removed setError(null);
+
+    let hasError = false;
+    setCreateErrors({});
 
     if (!createForm.image) {
-      toast.error("Image file is required.");
-      setIsCreating(false);
+      setCreateErrors((prev) => ({ ...prev, image: "Image file is required." }));
+      hasError = true;
+    } else {
+      if (!createForm.image.type.startsWith("image/")) {
+        setCreateErrors((prev) => ({ ...prev, image: "File must be an image (e.g., JPEG, PNG)." }));
+        hasError = true;
+      }
+      if (createForm.image.size > 5 * 1024 * 1024) {
+        setCreateErrors((prev) => ({ ...prev, image: "Image must be smaller than 5MB." }));
+        hasError = true;
+      }
+    }
+
+    const noFlags = !createForm.isHeroImage && !createForm.isLogo && !createForm.isIcon;
+    if (noFlags && selectedCreateAssociationType !== "none") {
+      const idKey = selectedCreateAssociationType;
+      const idValue = createForm[idKey as keyof typeof createForm];
+      if (!idValue) {
+        setCreateErrors((prev) => ({
+          ...prev,
+          associationId: `Please select a ${idKey.replace("Id", "").toLowerCase()}.`,
+        }));
+        hasError = true;
+      }
+    }
+
+    if (hasError) {
       return;
     }
+
+    setIsCreating(true);
 
     const formData = new FormData();
     formData.append("image", createForm.image as File);
@@ -445,18 +466,12 @@ const AllImagesPage = () => {
     if (createForm.isLogo) formData.append("isLogo", "true");
     if (createForm.isIcon) formData.append("isIcon", "true");
 
-    // Append the selected association ID
-    if (selectedCreateAssociationType !== "none") {
+    // Append the selected association ID only if no flags are set
+    if (noFlags && selectedCreateAssociationType !== "none") {
       const idKey = selectedCreateAssociationType;
-      const idValue = createForm[idKey as keyof typeof createForm]; // Keep this as is
+      const idValue = createForm[idKey as keyof typeof createForm];
       if (idValue) {
-        formData.append(idKey, idValue as string); // Explicitly cast idValue to string
-      } else {
-        toast.error(
-          `Please select an ID for the chosen association type: ${idKey}.`
-        );
-        setIsCreating(false);
-        return;
+        formData.append(idKey, idValue as string);
       }
     }
 
@@ -485,17 +500,20 @@ const AllImagesPage = () => {
         fetchAllImages(); // Refresh list
         fetchEntityOptions(); // Refresh entity options as well
       } else {
-        toast.error(response.data.message || "Failed to upload image.");
+        toast.error(response.data.message || "Failed to upload image. Please try again.");
       }
     } catch (err: any) {
-      // Removed setError(err.message || "An unexpected error occurred during upload.");
-      if (err.response && err.response.status === 413) {
-        toast.error(
-          "Image too large. Please upload an image smaller than 5MB."
-        );
-      } else {
-        toast.error(err.response?.data?.message || "Error uploading image.");
+      let errorMessage = "An unexpected error occurred during upload.";
+      if (err.response) {
+        if (err.response.status === 413) {
+          errorMessage = "Image too large. Please upload an image smaller than 5MB.";
+        } else if (err.response.data?.message) {
+          errorMessage = err.response.data.message;
+        } else if (err.response.data?.errors) {
+          errorMessage = Object.values(err.response.data.errors).join(" ");
+        }
       }
+      toast.error(errorMessage);
     } finally {
       setIsCreating(false);
     }
@@ -525,8 +543,28 @@ const AllImagesPage = () => {
 
   const handleUpdateImage = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    let hasError = false;
+    setUpdateErrors({});
+
+    const noFlags = !updateForm.isHeroImage && !updateForm.isLogo && !updateForm.isIcon;
+    if (noFlags && selectedUpdateAssociationType !== "none") {
+      const idKey = selectedUpdateAssociationType;
+      const idValue = updateForm[idKey as keyof typeof updateForm];
+      if (!idValue) {
+        setUpdateErrors((prev) => ({
+          ...prev,
+          associationId: `Please select a ${idKey.replace("Id", "").toLowerCase()}.`,
+        }));
+        hasError = true;
+      }
+    }
+
+    if (hasError) {
+      return;
+    }
+
     setIsUpdating(true);
-    // Removed setError(null);
 
     // Build payload, ensuring only one association ID is present based on selected type
     const payload: { [key: string]: any } = {};
@@ -543,13 +581,6 @@ const AllImagesPage = () => {
         const idValue = updateForm[idKey as keyof typeof updateForm];
         if (idValue) {
           payload[idKey] = idValue;
-        } else {
-          // This case means a type was selected but no ID was chosen, which is an error per API.
-          toast.error(
-            `Please select an ID for the chosen association type: ${idKey}.`
-          );
-          setIsUpdating(false);
-          return;
         }
       } else {
         // If "none" is selected and no boolean flag is true, ensure all association IDs are explicitly set to null
@@ -580,11 +611,18 @@ const AllImagesPage = () => {
         fetchAllImages(); // Refresh list
         fetchEntityOptions(); // Refresh entity options as well
       } else {
-        toast.error(response.data.message || "Failed to update image.");
+        toast.error(response.data.message || "Failed to update image. Please try again.");
       }
     } catch (err: any) {
-      // Removed setError(err.message || "An unexpected error occurred during update.");
-      toast.error(err.response?.data?.message || "Error updating image.");
+      let errorMessage = "An unexpected error occurred during update.";
+      if (err.response) {
+        if (err.response.data?.message) {
+          errorMessage = err.response.data.message;
+        } else if (err.response.data?.errors) {
+          errorMessage = Object.values(err.response.data.errors).join(" ");
+        }
+      }
+      toast.error(errorMessage);
     } finally {
       setIsUpdating(false);
     }
@@ -599,7 +637,6 @@ const AllImagesPage = () => {
     if (!imageToDeleteId) return;
 
     setIsDeleting(true);
-    // Removed setError(null);
     try {
       const response = await axiosInstance.delete(
         `/admin/image/${imageToDeleteId}`
@@ -610,11 +647,18 @@ const AllImagesPage = () => {
         setImageToDeleteId(null);
         fetchAllImages(); // Refresh list
       } else {
-        toast.error(response.data.message || "Failed to delete image.");
+        toast.error(response.data.message || "Failed to delete image. Please try again.");
       }
     } catch (err: any) {
-      // Removed setError(err.message || "An unexpected error occurred during deletion.");
-      toast.error(err.response?.data?.message || "Error deleting image.");
+      let errorMessage = "An unexpected error occurred during deletion.";
+      if (err.response) {
+        if (err.response.data?.message) {
+          errorMessage = err.response.data.message;
+        } else if (err.response.data?.errors) {
+          errorMessage = Object.values(err.response.data.errors).join(" ");
+        }
+      }
+      toast.error(errorMessage);
     } finally {
       setIsDeleting(false);
     }
@@ -833,8 +877,6 @@ const AllImagesPage = () => {
           </Card>
         </motion.div>
 
-        {/* Removed Error Message component */}
-
         {/* Images Table */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -995,7 +1037,7 @@ const AllImagesPage = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => handleViewDetails(image.id)}
-                              className="hover:bg-primary"
+                              className="hover:text-primary hover:bg-primary/10 border-border"
                               disabled={loading}
                             >
                               <Eye className="h-4 w-4 mr-1" />
@@ -1005,7 +1047,7 @@ const AllImagesPage = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => openUpdateDialog(image)}
-                              className="hover:bg-primary"
+                              className="hover:text-primary hover:bg-primary/10 border-border"
                               disabled={loading}
                             >
                               <Edit className="h-4 w-4 mr-1" />
@@ -1095,6 +1137,7 @@ const AllImagesPage = () => {
               isLogo: false,
               isIcon: false,
             });
+            setCreateErrors({});
             setSelectedCreateAssociationType("none");
             setFilterOptionsSearchQuery(""); // Clear search filter when dialog closes
           }
@@ -1126,20 +1169,35 @@ const AllImagesPage = () => {
                 required
                 maxLength={255} // Max length for file name (often restricted by OS)
               />
+              {createErrors.image && (
+                <p className="text-destructive text-sm mt-1">
+                  {createErrors.image}
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="createIsHeroImage"
                   checked={createForm.isHeroImage}
-                  onCheckedChange={(checked: boolean) =>
+                  onCheckedChange={(checked: boolean) => {
+                    if (checked) {
+                      setSelectedCreateAssociationType("none");
+                      setCreateForm({
+                        ...createForm,
+                        productId: null,
+                        categoryId: null,
+                        subCategoryId: null,
+                        blogId: null,
+                      });
+                    }
                     setCreateForm({
                       ...createForm,
                       isHeroImage: checked,
                       isLogo: checked ? false : createForm.isLogo, // Uncheck others if this is checked
                       isIcon: checked ? false : createForm.isIcon, // Uncheck others if this is checked
-                    })
-                  }
+                    });
+                  }}
                   disabled={isCreating || loading}
                 />
                 <label
@@ -1153,14 +1211,24 @@ const AllImagesPage = () => {
                 <Checkbox
                   id="createIsLogo"
                   checked={createForm.isLogo}
-                  onCheckedChange={(checked: boolean) =>
+                  onCheckedChange={(checked: boolean) => {
+                    if (checked) {
+                      setSelectedCreateAssociationType("none");
+                      setCreateForm({
+                        ...createForm,
+                        productId: null,
+                        categoryId: null,
+                        subCategoryId: null,
+                        blogId: null,
+                      });
+                    }
                     setCreateForm({
                       ...createForm,
                       isLogo: checked,
                       isHeroImage: checked ? false : createForm.isHeroImage, // Uncheck others if this is checked
                       isIcon: checked ? false : createForm.isIcon, // Uncheck others if this is checked
-                    })
-                  }
+                    });
+                  }}
                   disabled={isCreating || loading}
                 />
                 <label htmlFor="createIsLogo" className="text-sm font-medium">
@@ -1171,14 +1239,24 @@ const AllImagesPage = () => {
                 <Checkbox
                   id="createIsIcon"
                   checked={createForm.isIcon}
-                  onCheckedChange={(checked: boolean) =>
+                  onCheckedChange={(checked: boolean) => {
+                    if (checked) {
+                      setSelectedCreateAssociationType("none");
+                      setCreateForm({
+                        ...createForm,
+                        productId: null,
+                        categoryId: null,
+                        subCategoryId: null,
+                        blogId: null,
+                      });
+                    }
                     setCreateForm({
                       ...createForm,
                       isIcon: checked,
                       isHeroImage: checked ? false : createForm.isHeroImage, // Uncheck others if this is checked
                       isLogo: checked ? false : createForm.isLogo, // Uncheck others if this is checked
-                    })
-                  }
+                    });
+                  }}
                   disabled={isCreating || loading}
                 />
                 <label htmlFor="createIsIcon" className="text-sm font-medium">
@@ -1280,6 +1358,11 @@ const AllImagesPage = () => {
                     )}
                   </SelectContent>
                 </Select>
+                {createErrors.associationId && (
+                  <p className="text-destructive text-sm mt-1">
+                    {createErrors.associationId}
+                  </p>
+                )}
               </div>
             )}
             {selectedCreateAssociationType === "categoryId" && (
@@ -1331,6 +1414,11 @@ const AllImagesPage = () => {
                     )}
                   </SelectContent>
                 </Select>
+                {createErrors.associationId && (
+                  <p className="text-destructive text-sm mt-1">
+                    {createErrors.associationId}
+                  </p>
+                )}
               </div>
             )}
             {selectedCreateAssociationType === "subCategoryId" && (
@@ -1382,6 +1470,11 @@ const AllImagesPage = () => {
                     )}
                   </SelectContent>
                 </Select>
+                {createErrors.associationId && (
+                  <p className="text-destructive text-sm mt-1">
+                    {createErrors.associationId}
+                  </p>
+                )}
               </div>
             )}
             {selectedCreateAssociationType === "blogId" && (
@@ -1431,6 +1524,11 @@ const AllImagesPage = () => {
                     )}
                   </SelectContent>
                 </Select>
+                {createErrors.associationId && (
+                  <p className="text-destructive text-sm mt-1">
+                    {createErrors.associationId}
+                  </p>
+                )}
               </div>
             )}
 
@@ -1479,6 +1577,7 @@ const AllImagesPage = () => {
               isLogo: false,
               isIcon: false,
             });
+            setUpdateErrors({});
             setSelectedUpdateAssociationType("none");
             setFilterOptionsSearchQuery(""); // Clear search filter when dialog closes
           }
@@ -1502,14 +1601,24 @@ const AllImagesPage = () => {
                 <Checkbox
                   id="isHeroImage"
                   checked={updateForm.isHeroImage}
-                  onCheckedChange={(checked: boolean) =>
+                  onCheckedChange={(checked: boolean) => {
+                    if (checked) {
+                      setSelectedUpdateAssociationType("none");
+                      setUpdateForm({
+                        ...updateForm,
+                        productId: null,
+                        categoryId: null,
+                        subCategoryId: null,
+                        blogId: null,
+                      });
+                    }
                     setUpdateForm({
                       ...updateForm,
                       isHeroImage: checked,
                       isLogo: checked ? false : updateForm.isLogo, // Uncheck others if this is checked
                       isIcon: checked ? false : updateForm.isIcon, // Uncheck others if this is checked
-                    })
-                  }
+                    });
+                  }}
                   disabled={isUpdating || loading}
                 />
                 <label htmlFor="isHeroImage" className="text-sm font-medium">
@@ -1520,14 +1629,24 @@ const AllImagesPage = () => {
                 <Checkbox
                   id="isLogo"
                   checked={updateForm.isLogo}
-                  onCheckedChange={(checked: boolean) =>
+                  onCheckedChange={(checked: boolean) => {
+                    if (checked) {
+                      setSelectedUpdateAssociationType("none");
+                      setUpdateForm({
+                        ...updateForm,
+                        productId: null,
+                        categoryId: null,
+                        subCategoryId: null,
+                        blogId: null,
+                      });
+                    }
                     setUpdateForm({
                       ...updateForm,
                       isLogo: checked,
                       isHeroImage: checked ? false : updateForm.isHeroImage, // Uncheck others if this is checked
                       isIcon: checked ? false : updateForm.isIcon, // Uncheck others if this is checked
-                    })
-                  }
+                    });
+                  }}
                   disabled={isUpdating || loading}
                 />
                 <label htmlFor="isLogo" className="text-sm font-medium">
@@ -1538,14 +1657,24 @@ const AllImagesPage = () => {
                 <Checkbox
                   id="isIcon"
                   checked={updateForm.isIcon}
-                  onCheckedChange={(checked: boolean) =>
+                  onCheckedChange={(checked: boolean) => {
+                    if (checked) {
+                      setSelectedUpdateAssociationType("none");
+                      setUpdateForm({
+                        ...updateForm,
+                        productId: null,
+                        categoryId: null,
+                        subCategoryId: null,
+                        blogId: null,
+                      });
+                    }
                     setUpdateForm({
                       ...updateForm,
                       isIcon: checked,
                       isHeroImage: checked ? false : updateForm.isHeroImage, // Uncheck others if this is checked
                       isLogo: checked ? false : updateForm.isLogo, // Uncheck others if this is checked
-                    })
-                  }
+                    });
+                  }}
                   disabled={isUpdating || loading}
                 />
                 <label htmlFor="isIcon" className="text-sm font-medium">
@@ -1650,6 +1779,11 @@ const AllImagesPage = () => {
                     )}
                   </SelectContent>
                 </Select>
+                {updateErrors.associationId && (
+                  <p className="text-destructive text-sm mt-1">
+                    {updateErrors.associationId}
+                  </p>
+                )}
               </div>
             )}
             {selectedUpdateAssociationType === "categoryId" && (
@@ -1706,6 +1840,11 @@ const AllImagesPage = () => {
                     )}
                   </SelectContent>
                 </Select>
+                {updateErrors.associationId && (
+                  <p className="text-destructive text-sm mt-1">
+                    {updateErrors.associationId}
+                  </p>
+                )}
               </div>
             )}
             {selectedUpdateAssociationType === "subCategoryId" && (
@@ -1762,6 +1901,11 @@ const AllImagesPage = () => {
                     )}
                   </SelectContent>
                 </Select>
+                {updateErrors.associationId && (
+                  <p className="text-destructive text-sm mt-1">
+                    {updateErrors.associationId}
+                  </p>
+                )}
               </div>
             )}
             {selectedUpdateAssociationType === "blogId" && (
@@ -1818,6 +1962,11 @@ const AllImagesPage = () => {
                     )}
                   </SelectContent>
                 </Select>
+                {updateErrors.associationId && (
+                  <p className="text-destructive text-sm mt-1">
+                    {updateErrors.associationId}
+                  </p>
+                )}
               </div>
             )}
 

@@ -1,18 +1,17 @@
 "use client";
 import { axiosInstance } from "@/lib/axios";
-import { SubCategoriesApiResponse, SubCategory } from "@/types/schemas";
-import React, { useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation"; // Import useRouter
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
+  SubCategoriesApiResponse,
+  SubCategory,
+  CategoriesApiResponse,
+  Category,
+} from "@/types/schemas";
+import React, { useEffect, useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { motion } from "framer-motion"; // Added motion import
+import { motion } from "framer-motion";
 import {
   Table,
   TableHeader,
@@ -34,9 +33,6 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
-  Badge,
-  Calendar,
-  Edit,
   FolderOpen,
   Plus,
   Trash2,
@@ -45,8 +41,9 @@ import {
   ArrowUp,
   ArrowDown,
   RefreshCw,
-  Info,
-  Eye, // Import the Eye icon
+  Edit,
+  Eye,
+  FileImage, // CHANGE START: Added Icon
 } from "lucide-react";
 import {
   Select,
@@ -55,7 +52,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CategoriesApiResponse, Category } from "@/types/schemas";
+// CHANGE END
 
 function formatDate(dateString: string) {
   const date = new Date(dateString);
@@ -72,12 +69,21 @@ const AllSubCategoryPage = () => {
   const [allSubCategories, setAllSubCategories] = useState<SubCategory[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState(true);
-  // Removed error state: const [error, setError] = useState<string | null>(null);
-  const [createForm, setCreateForm] = useState({
+
+  // CHANGE START: Add imageFile to createForm state
+  const [createForm, setCreateForm] = useState<{
+    name: string;
+    description: string;
+    categoryId: string;
+    imageFile: File | null;
+  }>({
     name: "",
     description: "",
     categoryId: "",
+    imageFile: null,
   });
+  // CHANGE END
+
   const [updateForm, setUpdateForm] = useState({
     id: "",
     name: "",
@@ -100,8 +106,15 @@ const AllSubCategoryPage = () => {
   );
   const [sortKey, setSortKey] = useState<keyof SubCategory | null>("createdAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [createFormErrors, setCreateFormErrors] = useState<{
+    name?: string;
+    categoryId?: string;
+  }>({});
+  const [updateFormErrors, setUpdateFormErrors] = useState<{ name?: string }>(
+    {}
+  );
 
-  const router = useRouter(); // Initialize useRouter
+  const router = useRouter();
 
   useEffect(() => {
     fetchSubCategoriesData();
@@ -131,16 +144,31 @@ const AllSubCategoryPage = () => {
       if (response.data.status === "success" && response.data.data) {
         setAllSubCategories(response.data.data?.subCategories || []);
         setTotal(response.data.data?.total || 0);
-        // Removed setError(null);
       } else {
-        toast.error(response.data.message || "Failed to fetch subcategories"); // Show toast on error
+        toast.error(response.data.message || "Failed to fetch subcategories");
       }
     } catch (err: any) {
-      toast.error(err.message || "An unexpected error occurred while fetching subcategories."); // Show toast on unexpected error
+      toast.error(
+        err.message ||
+          "An unexpected error occurred while fetching subcategories."
+      );
     } finally {
       setLoading(false);
     }
   };
+
+  function validateSubCategoryForm(name: string, categoryId?: string) {
+    const errors: { name?: string; categoryId?: string } = {};
+    if (!name.trim()) errors.name = "Name is required";
+    else if (name.trim().length < 2)
+      errors.name = "Name must be at least 2 characters";
+    else if (name.trim().length > 100)
+      errors.name = "Name must be at most 100 characters";
+    if (typeof categoryId !== "undefined") {
+      if (!categoryId.trim()) errors.categoryId = "Category is required";
+    }
+    return errors;
+  }
 
   const filteredAndSortedSubCategories = useMemo(() => {
     let currentSubCategories = allSubCategories;
@@ -189,37 +217,114 @@ const AllSubCategoryPage = () => {
     return currentSubCategories;
   }, [allSubCategories, searchQuery, categoryFilterId, sortKey, sortDirection]);
 
+  // CHANGE START: Update state cleanup to include imageFile
+  const handleCreateDialogChange = (open: boolean) => {
+    setIsCreateDialogOpen(open);
+    if (!open) {
+      setCreateForm({
+        name: "",
+        description: "",
+        categoryId: "",
+        imageFile: null,
+      });
+      setIsCreating(false);
+      setCreateFormErrors({});
+    }
+  };
+  // CHANGE END
+
+  const handleUpdateDialogChange = (open: boolean) => {
+    setIsUpdateDialogOpen(open);
+    if (!open) {
+      setUpdateForm({ id: "", name: "", description: "" });
+      setIsUpdating(false);
+    }
+  };
+
+  const handleDeleteDialogChange = (open: boolean) => {
+    setIsDeleteDialogOpen(open);
+    if (!open) {
+      setSubCategoryToDeleteId(null);
+      setIsDeleting(null);
+    }
+  };
+
+  // CHANGE START: Major update to handleCreate to support image upload
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createForm.name.trim()) {
-      toast.error("Name is required");
-      return;
-    }
-    if (!createForm.categoryId.trim()) {
-      toast.error("Category is required");
+    setCreateFormErrors({});
+    const errors = validateSubCategoryForm(
+      createForm.name,
+      createForm.categoryId
+    );
+    if (Object.keys(errors).length > 0) {
+      setCreateFormErrors(errors);
       return;
     }
     setIsCreating(true);
+
     try {
-      const response = await axiosInstance.post("/admin/sub-category", {
-        name: createForm.name,
-        description: createForm.description,
-        categoryId: createForm.categoryId,
-      });
-      if (response.data.status === "success" && response.data.data) {
-        setCreateForm({ name: "", description: "", categoryId: "" });
-        toast.success("SubCategory created successfully");
-        setIsCreateDialogOpen(false);
+      // Step 1: Create the subcategory first
+      const subCategoryResponse = await axiosInstance.post(
+        "/admin/sub-category",
+        {
+          name: createForm.name,
+          description: createForm.description,
+          categoryId: createForm.categoryId,
+        }
+      );
+
+      if (
+        subCategoryResponse.data.status === "success" &&
+        subCategoryResponse.data.data
+      ) {
+        const newSubCategoryId = subCategoryResponse.data.data.subCategory.id;
+
+        // Step 2: If an image is selected, upload it
+        if (createForm.imageFile && newSubCategoryId) {
+          const formData = new FormData();
+          formData.append("image", createForm.imageFile);
+          formData.append("subCategoryId", newSubCategoryId); // Assuming the key is subCategoryId
+
+          try {
+            await axiosInstance.post("/admin/image", formData, {
+              headers: { "Content-Type": "multipart/form-data" },
+            });
+            toast.success("Subcategory and image uploaded successfully!");
+          } catch (imageError: any) {
+            console.error("Image upload failed:", imageError);
+            toast.warning(
+              "Subcategory was created, but the image upload failed. You can add it later."
+            );
+          }
+        } else {
+          toast.success("Subcategory created successfully!");
+        }
+
+        // Reset form, close dialog, and refresh data
+        handleCreateDialogChange(false);
         fetchSubCategoriesData();
       } else {
-        toast.error(response.data.message || "Failed to create subcategory");
+        toast.error(
+          subCategoryResponse.data.message || "Failed to create subcategory"
+        );
       }
     } catch (err: any) {
-      toast.error(err.message || "An unexpected error occurred while creating subcategory.");
+      let apiMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Something went wrong. Please try again.";
+      if (apiMessage.toLowerCase().includes("duplicate")) {
+        apiMessage =
+          "A subcategory with this name already exists in this category.";
+      }
+      toast.error(apiMessage);
     } finally {
       setIsCreating(false);
     }
   };
+  // CHANGE END
 
   const openUpdateDialog = (subCategory: SubCategory) => {
     setUpdateForm({
@@ -232,8 +337,10 @@ const AllSubCategoryPage = () => {
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!updateForm.name.trim()) {
-      toast.error("Name is required");
+    setUpdateFormErrors({});
+    const errors = validateSubCategoryForm(updateForm.name);
+    if (Object.keys(errors).length > 0) {
+      setUpdateFormErrors(errors);
       return;
     }
     setIsUpdating(true);
@@ -263,7 +370,16 @@ const AllSubCategoryPage = () => {
         toast.error(response.data.message || "Failed to update subcategory");
       }
     } catch (err: any) {
-      toast.error(err.message || "An unexpected error occurred while updating subcategory.");
+      let apiMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Something went wrong. Please try again.";
+      if (apiMessage.toLowerCase().includes("duplicate")) {
+        apiMessage =
+          "A subcategory with this name already exists in this category.";
+      }
+      toast.error(apiMessage);
     } finally {
       setIsUpdating(false);
     }
@@ -294,7 +410,10 @@ const AllSubCategoryPage = () => {
         toast.error(response.data.message || "Failed to delete subcategory");
       }
     } catch (err: any) {
-      toast.error(err.message || "An unexpected error occurred while deleting subcategory.");
+      toast.error(
+        err.message ||
+          "An unexpected error occurred while deleting subcategory."
+      );
     } finally {
       setIsDeleting(null);
       setIsDeleteDialogOpen(false);
@@ -320,12 +439,12 @@ const AllSubCategoryPage = () => {
     );
   };
 
-  // New function to handle navigation to details page
   const handleViewDetails = (subCategoryId: string) => {
-    router.push(`/subcategory/${subCategoryId}`); // Assuming your subcategory details page is at /subcategories/[id]
+    router.push(`/subcategory/${subCategoryId}`);
   };
 
   if (loading) {
+    // ... Skeleton loading state remains the same
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -333,7 +452,6 @@ const AllSubCategoryPage = () => {
         transition={{ duration: 0.5 }}
         className="min-h-screen flex flex-col items-center justify-center bg-background p-4"
       >
-        {/* Header Section Skeleton */}
         <div className="w-full max-w-7xl mb-6 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Skeleton className="h-12 w-12 rounded-lg" />
@@ -344,10 +462,7 @@ const AllSubCategoryPage = () => {
           </div>
           <Skeleton className="h-10 w-32" />
         </div>
-
-        {/* Main Content Area Skeletons */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-          {/* Stats Cards Skeleton */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
             <Card className="hover:shadow-md transition-shadow duration-200">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -359,8 +474,6 @@ const AllSubCategoryPage = () => {
               </CardContent>
             </Card>
           </div>
-
-          {/* Controls: Search and Filters Skeleton */}
           <Card className="mb-8 p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
               <div className="relative w-full sm:w-auto flex-1">
@@ -372,8 +485,6 @@ const AllSubCategoryPage = () => {
               </div>
             </div>
           </Card>
-
-          {/* SubCategories Table Skeleton */}
           <Card className="border-border shadow-sm">
             <CardContent>
               <Table>
@@ -425,8 +536,6 @@ const AllSubCategoryPage = () => {
     );
   }
 
-  // Removed the entire `if (error)` block, as errors are now handled by toasts.
-
   return (
     <div className="min-h-screen bg-background">
       <motion.div
@@ -451,10 +560,9 @@ const AllSubCategoryPage = () => {
                   </span>
                 </div>
               </div>
-              {/* Dialog for creating a new subcategory - remains here */}
               <Dialog
                 open={isCreateDialogOpen}
-                onOpenChange={setIsCreateDialogOpen}
+                onOpenChange={handleCreateDialogChange}
               >
                 <DialogTrigger asChild>
                   <Button disabled={loading}>
@@ -487,8 +595,13 @@ const AllSubCategoryPage = () => {
                         placeholder="Enter subcategory name"
                         disabled={isCreating}
                         required
-                        maxLength={100} // Set max length for subcategory name
+                        maxLength={100}
                       />
+                      {createFormErrors.name && (
+                        <span className="text-destructive text-xs mt-1 block">
+                          {createFormErrors.name}
+                        </span>
+                      )}
                     </div>
                     <div>
                       <label
@@ -509,9 +622,34 @@ const AllSubCategoryPage = () => {
                         placeholder="Enter subcategory description"
                         disabled={isCreating}
                         rows={3}
-                        maxLength={500} // Set max length for subcategory description
+                        maxLength={500}
                       />
                     </div>
+                    {/* CHANGE START: Add file input for image */}
+                    <div>
+                      <label
+                        htmlFor="createImage"
+                        className="block text-sm font-medium text-foreground mb-1"
+                      >
+                        Image (Optional)
+                      </label>
+                      <Input
+                        id="createImage"
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) =>
+                          setCreateForm({
+                            ...createForm,
+                            imageFile: e.target.files
+                              ? e.target.files[0]
+                              : null,
+                          })
+                        }
+                        className="h-fit file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                        disabled={isCreating}
+                      />
+                    </div>
+                    {/* CHANGE END */}
                     <div>
                       <label
                         htmlFor="createCategoryId"
@@ -531,7 +669,6 @@ const AllSubCategoryPage = () => {
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select a category" />
                         </SelectTrigger>
-
                         <SelectContent className="rounded-lg shadow-lg bg-popover">
                           {categories.length === 0 ? (
                             <SelectItem value="none" disabled>
@@ -542,11 +679,7 @@ const AllSubCategoryPage = () => {
                               <SelectItem
                                 key={category.id}
                                 value={category.id}
-                                className={`
-                                 rounded-md text-sm font-medium my-1
-                                 focus:bg-opacity-80 focus:text-opacity-90
-                                 transition-all duration-150
-                                `}
+                                className="hover:bg-primary hover:text-primary-foreground"
                               >
                                 {category.name}
                               </SelectItem>
@@ -554,6 +687,11 @@ const AllSubCategoryPage = () => {
                           )}
                         </SelectContent>
                       </Select>
+                      {createFormErrors.categoryId && (
+                        <span className="text-destructive text-xs mt-1 block">
+                          {createFormErrors.categoryId}
+                        </span>
+                      )}
                     </div>
                     <DialogFooter>
                       <Button
@@ -584,7 +722,6 @@ const AllSubCategoryPage = () => {
       </motion.div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stat Cards */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -611,7 +748,6 @@ const AllSubCategoryPage = () => {
           </Card>
         </motion.div>
 
-        {/* Controls: Search and Filters - remains the same */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -629,7 +765,7 @@ const AllSubCategoryPage = () => {
                   className="w-full pl-10 pr-4 py-2"
                   aria-label="Search subcategories"
                   disabled={loading}
-                  maxLength={100} // Set max length for search query
+                  maxLength={100}
                 />
               </div>
               <div className="flex flex-col sm:flex-row gap-4 items-center">
@@ -643,23 +779,15 @@ const AllSubCategoryPage = () => {
                     <SelectTrigger className="w-[180px] pl-10">
                       <SelectValue placeholder="Filter by category" />
                     </SelectTrigger>
-
                     <SelectContent className="rounded-lg shadow-lg bg-popover">
-                      <SelectItem
-                        value="all"
-                      >
-                        All Categories
-                      </SelectItem>
+                      <SelectItem value="all">All</SelectItem>
                       {categories.length === 0 ? (
                         <SelectItem value="none" disabled>
                           No categories available
                         </SelectItem>
                       ) : (
                         categories.map((category) => (
-                          <SelectItem
-                            key={category.id}
-                            value={category.id}
-                          >
+                          <SelectItem key={category.id} value={category.id}>
                             {category.name}
                           </SelectItem>
                         ))
@@ -684,7 +812,6 @@ const AllSubCategoryPage = () => {
           </Card>
         </motion.div>
 
-        {/* SubCategories Table - remains the same */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -772,7 +899,7 @@ const AllSubCategoryPage = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => openUpdateDialog(subcategory)}
-                              className="hover:text-primary-foreground hover:bg-primary"
+                              className="hover:text-primary hover:bg-primary/10 border-border"
                               disabled={loading}
                             >
                               <Edit className="h-4 w-4 mr-1" />
@@ -811,8 +938,7 @@ const AllSubCategoryPage = () => {
         </motion.div>
       </div>
 
-      {/* Update Subcategory Dialog - remains the same */}
-      <Dialog open={isUpdateDialogOpen} onOpenChange={setIsUpdateDialogOpen}>
+      <Dialog open={isUpdateDialogOpen} onOpenChange={handleUpdateDialogChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Subcategory</DialogTitle>
@@ -835,7 +961,7 @@ const AllSubCategoryPage = () => {
                 placeholder="Enter subcategory name"
                 disabled={isUpdating}
                 required
-                maxLength={100} // Set max length for updated subcategory name
+                maxLength={100}
               />
             </div>
             <div>
@@ -854,7 +980,7 @@ const AllSubCategoryPage = () => {
                 placeholder="Enter subcategory description"
                 disabled={isUpdating}
                 rows={3}
-                maxLength={500} // Set max length for updated subcategory description
+                maxLength={500}
               />
             </div>
             <DialogFooter>
@@ -881,8 +1007,7 @@ const AllSubCategoryPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Subcategory Dialog - remains the same */}
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+      <Dialog open={isDeleteDialogOpen} onOpenChange={handleDeleteDialogChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Confirm Deletion</DialogTitle>

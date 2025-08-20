@@ -76,7 +76,7 @@ const AllAdminPage = ({ userRole }: { userRole: string | null }) => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalAdminsCount, setTotalAdminsCount] = useState(0); // This will reflect filtered count now
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [roleFilter, setRoleFilter] = useState<string>("SUB"); // NEW
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [adminToDelete, setAdminToDelete] = useState<string | null>(null);
   const [deletingAdmin, setDeletingAdmin] = useState(false);
@@ -94,6 +94,12 @@ const AllAdminPage = ({ userRole }: { userRole: string | null }) => {
 
   const token = getAccessToken();
   const router = useRouter();
+
+  const [addAdminErrors, setAddAdminErrors] = useState<{
+    name?: string;
+    email?: string;
+  }>({});
+  const [editAdminErrors, setEditAdminErrors] = useState<{ name?: string }>({});
 
   // Redirect if no token
   useEffect(() => {
@@ -124,6 +130,36 @@ const AllAdminPage = ({ userRole }: { userRole: string | null }) => {
   useEffect(() => {
     fetchAllAdmins();
   }, [fetchAllAdmins]);
+
+  // Simple email validation regex
+  function validateEmail(email: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
+  function validateAddAdminForm(name: string, email: string) {
+    const errors: { name?: string; email?: string } = {};
+    if (!name.trim()) errors.name = "Name is required";
+    else if (name.trim().length < 2)
+      errors.name = "Name must be at least 2 characters";
+    else if (name.trim().length > 100)
+      errors.name = "Name must be at most 100 characters";
+
+    if (!email.trim()) errors.email = "Email is required";
+    else if (!validateEmail(email.trim())) errors.email = "Email is invalid";
+    else if (email.trim().length > 255)
+      errors.email = "Email must be at most 255 characters";
+    return errors;
+  }
+
+  function validateEditAdminForm(name: string) {
+    const errors: { name?: string } = {};
+    if (!name.trim()) errors.name = "Name is required";
+    else if (name.trim().length < 2)
+      errors.name = "Name must be at least 2 characters";
+    else if (name.trim().length > 100)
+      errors.name = "Name must be at most 100 characters";
+    return errors;
+  }
 
   // This useMemo now handles all filtering, sorting, and pagination
   const filteredAndPaginatedAdmins = useMemo(() => {
@@ -253,18 +289,30 @@ const AllAdminPage = ({ userRole }: { userRole: string | null }) => {
   };
 
   const handleAddAdmin = async () => {
+    setAddAdminErrors({});
+    const validation = validateAddAdminForm(newAdmin.name, newAdmin.email);
+    if (Object.keys(validation).length > 0) {
+      setAddAdminErrors(validation);
+      return;
+    }
     setAddingAdmin(true);
     try {
       await axiosInstance.post("/admin", newAdmin);
       toast.success("Admin added successfully!");
       setShowAddAdminDialog(false);
       setNewAdmin({ name: "", email: "" });
-      fetchAllAdmins(); // Re-fetch ALL admins to update the `originalAdmins` state
+      fetchAllAdmins();
     } catch (error: any) {
-      toast.error(
-        `Failed to add admin: ${error.message || "An error occurred."}`
-      );
-      console.error("Add admin error:", error);
+      // Friendly API error handling:
+      let apiMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "Something went wrong. Please try again.";
+      if (apiMessage.toLowerCase().includes("duplicate")) {
+        apiMessage = "An admin with this email already exists.";
+      }
+      toast.error(apiMessage);
     } finally {
       setAddingAdmin(false);
     }
@@ -277,8 +325,13 @@ const AllAdminPage = ({ userRole }: { userRole: string | null }) => {
   };
 
   const handleUpdateAdmin = async () => {
+    setEditAdminErrors({});
     if (!adminToEdit) return;
-
+    const validation = validateEditAdminForm(editAdminName);
+    if (Object.keys(validation).length > 0) {
+      setEditAdminErrors(validation);
+      return;
+    }
     setEditingAdmin(true);
     try {
       await axiosInstance.patch(`/admin/${adminToEdit.id}`, {
@@ -288,12 +341,14 @@ const AllAdminPage = ({ userRole }: { userRole: string | null }) => {
       setShowEditAdminDialog(false);
       setAdminToEdit(null);
       setEditAdminName("");
-      fetchAllAdmins(); // Re-fetch ALL admins to update the `originalAdmins` state
+      fetchAllAdmins();
     } catch (error: any) {
-      toast.error(
-        `Failed to update admin: ${error.message || "An error occurred."}`
-      );
-      console.error("Update admin error:", error);
+      let apiMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "Something went wrong. Please try again.";
+      toast.error(apiMessage);
     } finally {
       setEditingAdmin(false);
     }
@@ -334,7 +389,9 @@ const AllAdminPage = ({ userRole }: { userRole: string | null }) => {
     (admin: Admin) => {
       // Disable delete button if the admin's role is SUPER
       // Or if the admin is currently being deleted.
-      return admin.role === "SUPER" || (deletingAdmin && adminToDelete === admin.id);
+      return (
+        admin.role === "SUPER" || (deletingAdmin && adminToDelete === admin.id)
+      );
     },
     [deletingAdmin, adminToDelete]
   );
@@ -382,9 +439,14 @@ const AllAdminPage = ({ userRole }: { userRole: string | null }) => {
                       onChange={(e) =>
                         setNewAdmin({ ...newAdmin, name: e.target.value })
                       }
-                      maxLength={100} // Example: Max length for name
+                      maxLength={100}
                       className="col-span-3"
                     />
+                    {addAdminErrors.name && (
+                      <span className="text-destructive text-xs mt-1 col-span-4">
+                        {addAdminErrors.name}
+                      </span>
+                    )}
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="email" className="text-right">
@@ -397,9 +459,14 @@ const AllAdminPage = ({ userRole }: { userRole: string | null }) => {
                       onChange={(e) =>
                         setNewAdmin({ ...newAdmin, email: e.target.value })
                       }
-                      maxLength={255} // Example: Max length for email
+                      maxLength={255}
                       className="col-span-3"
                     />
+                    {addAdminErrors.email && (
+                      <span className="text-destructive text-xs mt-1 col-span-4">
+                        {addAdminErrors.email}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <DialogFooter>
@@ -473,7 +540,7 @@ const AllAdminPage = ({ userRole }: { userRole: string | null }) => {
                 />
               </div>
               <div className="flex flex-col sm:flex-row gap-4 items-center">
-                <Select
+                {/* <Select
                   value={roleFilter}
                   onValueChange={(value) => {
                     setRoleFilter(value);
@@ -481,12 +548,12 @@ const AllAdminPage = ({ userRole }: { userRole: string | null }) => {
                   }}
                   disabled={loading}
                 >
-                  <SelectTrigger className="w-[200px] pl-10">
+                  <SelectTrigger className="w-[200px]">
                     <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <SelectValue placeholder="Filter by role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Roles</SelectItem>
+                    <SelectItem value="all">All</SelectItem>
                     {Array.from(new Set(originalAdmins.map((a) => a.role))).map(
                       (role) => (
                         <SelectItem key={role} value={role}>
@@ -495,7 +562,7 @@ const AllAdminPage = ({ userRole }: { userRole: string | null }) => {
                       )
                     )}
                   </SelectContent>
-                </Select>
+                </Select> */}
                 <Button
                   onClick={handleRefresh}
                   disabled={loading}
@@ -800,6 +867,11 @@ const AllAdminPage = ({ userRole }: { userRole: string | null }) => {
                 className="col-span-3"
                 maxLength={32}
               />
+              {editAdminErrors.name && (
+                <span className="text-destructive text-xs mt-1 col-span-4">
+                  {editAdminErrors.name}
+                </span>
+              )}
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-email" className="text-right">

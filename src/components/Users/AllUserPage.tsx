@@ -95,7 +95,7 @@ const AllUserPage = () => {
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [deletingUser, setDeletingUser] = useState(false);
   const [deleteActionType, setDeleteActionType] = useState<
-    "soft" | "permanent" | null
+    "soft" | "permanent" | "recover" | null
   >(null);
 
   const [sortKey, setSortKey] = useState<keyof User | null>("createdAt");
@@ -225,6 +225,28 @@ const AllUserPage = () => {
     sortDirection,
     currentPage,
   ]);
+
+  const executeRecover = async () => {
+    if (!userToDelete) return;
+
+    setDeletingUser(true);
+    setDeleteActionType("recover");
+    try {
+      await axiosInstance.post(`/admin/user/recover/${userToDelete}`);
+      fetchAllUsers();
+      toast.success("User recovered successfully!");
+      setShowDeleteConfirmation(false);
+      setUserToDelete(null);
+      setDeleteActionType(null);
+    } catch (error: any) {
+      toast.error(
+        `Failed to recover user: ${error.message || "An error occurred."}`
+      );
+      console.error("Recover user error:", error);
+    } finally {
+      setDeletingUser(false);
+    }
+  };
 
   const handleRefresh = () => {
     setSearchQuery("");
@@ -477,7 +499,7 @@ const AllUserPage = () => {
                     </SelectTrigger>
                     <SelectContent className="rounded-lg shadow-lg bg-popover">
                       <SelectItem value="all" className="hover:bg-primary">
-                        All Statuses
+                        All
                       </SelectItem>
                       <SelectItem value="active" className="hover:bg-primary">
                         Active
@@ -485,6 +507,7 @@ const AllUserPage = () => {
                       <SelectItem value="deleted" className="hover:bg-primary">
                         Deleted
                       </SelectItem>
+
                     </SelectContent>
                   </Select>
                 </div>
@@ -738,7 +761,6 @@ const AllUserPage = () => {
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
       <Dialog
         open={showDeleteConfirmation}
         onOpenChange={setShowDeleteConfirmation}
@@ -747,58 +769,109 @@ const AllUserPage = () => {
           <DialogHeader>
             <DialogTitle>
               <Trash2 className="inline-block mr-2 h-6 w-6 text-destructive" />
-              Confirm User Deletion
+              {(() => {
+                const selectedUser = allUsers.find(
+                  (user) => user.id === userToDelete
+                );
+                return selectedUser?.isActive
+                  ? "Confirm User Deletion"
+                  : "User Actions";
+              })()}
             </DialogTitle>
           </DialogHeader>
-          <p className="text-muted-foreground mb-4">
-            Are you sure you want to delete this user? Choose{" "}
-            <strong className="font-semibold text-orange-500">
-              Soft Delete
-            </strong>{" "}
-            to mark the user as inactive (reversible) or{" "}
-            <strong className="font-semibold text-destructive">
-              Permanent Delete
-            </strong>{" "}
-            to remove the user completely (irreversible).
-          </p>
-          <DialogFooter className="flex flex-col sm:flex-row justify-end gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={cancelDelete}
-              disabled={deletingUser}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => executeDelete("soft")}
-              disabled={deletingUser && deleteActionType !== "soft"}
-              className="bg-orange-500 text-white hover:bg-orange-600"
-            >
-              {deletingUser && deleteActionType === "soft" ? (
-                <div className="flex items-center">
-                  <LoadingSpinner className="h-4 w-4 mr-2" />
-                  Soft Deleting...
-                </div>
-              ) : (
-                "Soft Delete"
-              )}
-            </Button>
-            <Button
-              onClick={() => executeDelete("permanent")}
-              disabled={deletingUser && deleteActionType !== "permanent"}
-              variant="destructive"
-            >
-              {deletingUser && deleteActionType === "permanent" ? (
-                <div className="flex items-center">
-                  <LoadingSpinner className="h-4 w-4 mr-2" />
-                  Permanently Deleting...
-                </div>
-              ) : (
-                "Permanent Delete"
-              )}
-            </Button>
-          </DialogFooter>
+          {(() => {
+            const selectedUser = allUsers.find(
+              (user) => user.id === userToDelete
+            );
+            const isUserActive = selectedUser?.isActive;
+
+            return (
+              <>
+                <p className="text-muted-foreground mb-4">
+                  {isUserActive ? (
+                    <>
+                      Are you sure you want to delete this user? Choose{" "}
+                      <strong className="font-semibold text-orange-500">
+                        Soft Delete
+                      </strong>{" "}
+                      to mark the user as inactive (reversible) or{" "}
+                      <strong className="font-semibold text-destructive">
+                        Permanent Delete
+                      </strong>{" "}
+                      to remove the user completely (irreversible).
+                    </>
+                  ) : (
+                    <>
+                      This user is currently inactive. You can{" "}
+                      <strong className="font-semibold text-green-600">
+                        Recover
+                      </strong>{" "}
+                      the user to reactivate their account or{" "}
+                      <strong className="font-semibold text-destructive">
+                        Permanently Delete
+                      </strong>{" "}
+                      to remove them completely (irreversible).
+                    </>
+                  )}
+                </p>
+                <DialogFooter className="flex flex-col sm:flex-row justify-end gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={cancelDelete}
+                    disabled={deletingUser}
+                  >
+                    Cancel
+                  </Button>
+                  {isUserActive ? (
+                    <Button
+                      onClick={() => executeDelete("soft")}
+                      disabled={deletingUser && deleteActionType !== "soft"}
+                      className="bg-orange-500 text-white hover:bg-orange-600"
+                    >
+                      {deletingUser && deleteActionType === "soft" ? (
+                        <div className="flex items-center">
+                          <LoadingSpinner className="h-4 w-4 mr-2" />
+                          Soft Deleting...
+                        </div>
+                      ) : (
+                        "Soft Delete"
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={executeRecover}
+                      disabled={deletingUser && deleteActionType !== "recover"}
+                      className="bg-green-600 text-white hover:bg-green-700"
+                    >
+                      {deletingUser && deleteActionType === "recover" ? (
+                        <div className="flex items-center">
+                          <LoadingSpinner className="h-4 w-4 mr-2" />
+                          Recovering...
+                        </div>
+                      ) : (
+                        "Recover User"
+                      )}
+                    </Button>
+                  )}
+                  <Button
+                    onClick={() => executeDelete("permanent")}
+                    disabled={deletingUser && deleteActionType !== "permanent"}
+                    variant="destructive"
+                  >
+                    {deletingUser && deleteActionType === "permanent" ? (
+                      <div className="flex items-center">
+                        <LoadingSpinner className="h-4 w-4 mr-2" />
+                        Permanently Deleting...
+                      </div>
+                    ) : (
+                      "Permanent Delete"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

@@ -709,7 +709,7 @@ const AllBlogsPage = () => {
             transition={{ delay: 0.35, duration: 0.5 }}
           >
             <Card className="border-border shadow-sm">
-              <CardContent className="p-0">
+              <CardContent className="p-4">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -779,7 +779,7 @@ const AllBlogsPage = () => {
             transition={{ delay: 0.35, duration: 0.5 }}
           >
             <Card className="shadow-sm">
-              <CardContent className="p-0">
+              <CardContent className="p-4">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -826,7 +826,7 @@ const AllBlogsPage = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => handleOpenUpdateDialog(blog)}
-                              className="hover:bg-primary"
+                              className="hover:text-primary hover:bg-primary/10 border-border"
                             >
                               <Edit className="h-4 w-4 mr-1" /> Edit
                             </Button>
@@ -834,14 +834,15 @@ const AllBlogsPage = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => router.push(`/blog/${blog.id}`)}
-                              className="hover:bg-primary"
+                              className="hover:text-primary hover:bg-primary/10 border-border"
                             >
                               <Eye className="h-4 w-4 mr-1" /> View
                             </Button>
                             <Button
-                              variant="destructive"
+                              variant="outline"
                               size="sm"
                               onClick={() => handleOpenDeleteDialog(blog.id)}
+                              className="hover:bg-destructive/10 hover:border-destructive hover:text-destructive"
                             >
                               <Trash2 className="h-4 w-4 mr-1" /> Delete
                             </Button>

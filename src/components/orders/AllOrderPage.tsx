@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { getAccessToken } from "@/lib/auth";
 import { ApiResponse, axiosInstance } from "@/lib/axios";
+import { isAxiosError } from "axios"; // Import for type-safe error handling
 
 // Shadcn UI components
 import {
@@ -178,6 +179,30 @@ const paymentStatusColors: Record<PaymentStatus | "all", string> = {
 };
 
 // --- Utility Functions ---
+/**
+ * Extracts a user-friendly error message from an API error object.
+ * @param error The error object caught in a try-catch block.
+ * @param defaultMessage A fallback message if no specific message can be found.
+ * @returns A user-friendly error string.
+ */
+const getApiErrorMessage = (
+  error: unknown,
+  defaultMessage: string
+): string => {
+  if (isAxiosError(error)) {
+    // Check if the backend sent a specific error message
+    if (error.response?.data?.message) {
+      return error.response.data.message;
+    }
+  }
+  // Fallback to the standard error message property
+  if (error instanceof Error) {
+    return error.message;
+  }
+  // Return the default message if all else fails
+  return defaultMessage;
+};
+
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -241,6 +266,7 @@ const AdminOrderManagement = () => {
 
   const fetchAllOrders = async () => {
     setLoading(true);
+    setError(null); // Reset error state before fetching
     try {
       const response = await axiosInstance.get<OrdersApiResponse>(
         "/admin/order?includeRelations=true"
@@ -248,10 +274,13 @@ const AdminOrderManagement = () => {
       const data = response.data.data;
       setAllOrders(data?.orders || []);
       setTotalOrdersCount(data?.total || 0);
-      setError(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setAllOrders([]);
-      setError(err.message || "Failed to fetch orders. Please try again.");
+      const errorMessage = getApiErrorMessage(
+        err,
+        "Failed to fetch orders. Please check your connection and try again."
+      );
+      setError(errorMessage);
       console.error("Fetch orders error:", err);
     } finally {
       setLoading(false);
@@ -262,20 +291,19 @@ const AdminOrderManagement = () => {
   const filteredAndPaginatedOrders = useMemo(() => {
     let currentOrders = [...allOrders];
 
-    // 1. Apply Search Filter (e.g., by Order ID, User ID, City, User Name)
-    if (searchQuery) {
+    // 1. Apply Search Filter (Validation: Trim whitespace)
+    const trimmedQuery = searchQuery.trim().toLowerCase();
+    if (trimmedQuery) {
       currentOrders = currentOrders.filter(
         (order) =>
-          order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          order.userId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          order.id.toLowerCase().includes(trimmedQuery) ||
+          order.userId.toLowerCase().includes(trimmedQuery) ||
           (order.shippingAddress?.city &&
-            order.shippingAddress.city
-              .toLowerCase()
-              .includes(searchQuery.toLowerCase())) ||
+            order.shippingAddress.city.toLowerCase().includes(trimmedQuery)) ||
           (order.shippingAddress?.pin &&
-            order.shippingAddress.pin.includes(searchQuery)) ||
+            order.shippingAddress.pin.includes(trimmedQuery)) ||
           (order.user?.name &&
-            order.user.name.toLowerCase().includes(searchQuery.toLowerCase()))
+            order.user.name.toLowerCase().includes(trimmedQuery))
       );
     }
 
@@ -417,17 +445,18 @@ const AdminOrderManagement = () => {
           )
         );
         toast.success(
-          `Order ${orderId} ${
+          `Order ${
             field === "status" ? "status" : "payment status"
-          } updated to ${newValue}.`
+          } updated successfully.`
         );
       } else {
+        // Handle cases where API returns success: false but with a message
         toast.error(response.data.message || `Failed to update ${field}.`);
       }
-    } catch (err: any) {
-      toast.error(
-        err.message || `An unexpected error occurred while updating ${field}.`
-      );
+    } catch (err: unknown) {
+      const defaultMessage = `An unexpected error occurred. Please try again.`;
+      const errorMessage = getApiErrorMessage(err, defaultMessage);
+      toast.error(errorMessage);
       console.error(`Update ${field} error:`, err);
     } finally {
       if (field === "status") {
@@ -441,8 +470,6 @@ const AdminOrderManagement = () => {
   // --- Render ---
   return (
     <div className="min-h-screen bg-background">
-      {/* Removed ToastContainer */}
-
       {/* Header Section */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -605,7 +632,7 @@ const AdminOrderManagement = () => {
                   className="w-full pl-10 pr-4 py-2 rounded-md border border-input focus:ring-2 focus:ring-primary"
                   aria-label="Search orders"
                   disabled={loading}
-                 maxLength={255} // Added max length for search query input
+                  maxLength={255} // Added max length for search query input
                 />
               </div>
 
@@ -807,7 +834,7 @@ const AdminOrderManagement = () => {
                     No orders found
                   </h3>
                   <p className="text-muted-foreground mb-4">
-                    Adjust your search or filters.
+                    Adjust your search or filters to find what you're looking for.
                   </p>
                 </div>
               </CardContent>

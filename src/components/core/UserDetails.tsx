@@ -23,7 +23,9 @@ const UserDetails = ({ onUserFetched }: UserDetailsProps) => {
   useEffect(() => {
     const fetchUserDetails = async () => {
       try {
-        const response = await axiosInstance.get("/admin/me?includeRelations=true");
+        const response = await axiosInstance.get(
+          "/admin/me?includeRelations=true"
+        );
         if (response.data.status === "success") {
           setUser(response.data.data.admin);
           onUserFetched(response.data.data.admin);
@@ -65,7 +67,11 @@ const UserDetails = ({ onUserFetched }: UserDetailsProps) => {
   }
 
   if (!user) {
-    return <div className="text-muted-foreground text-sm mt-4">No user data available.</div>;
+    return (
+      <div className="text-muted-foreground text-sm mt-4">
+        No user data available.
+      </div>
+    );
   }
 
   return (
@@ -77,15 +83,25 @@ const UserDetails = ({ onUserFetched }: UserDetailsProps) => {
         </div>
         <div className="flex flex-col">
           <span className="font-semibold text-sm truncate">{user.name}</span>
-          <span className="text-xs text-muted-foreground truncate">{user.email}</span>
-          <Badge className={`px-3 mt-2 py-1 rounded-sm ${
-                                user.role == 'SUPER'
-                                  ? "bg-orange-500/20 text-orange-500 hover:bg-orange-500/20"
-                                  : "bg-red-100 text-red-500 hover:bg-red-100"
-                              } max-w-fit`}>{user.role} ADMIN</Badge>
+          <span className="text-xs text-muted-foreground truncate">
+            {user.email}
+          </span>
+          <Badge
+            className={`px-3 mt-2 py-1 rounded-sm ${
+              user.role == "SUPER"
+                ? "bg-orange-500/20 text-orange-500 hover:bg-orange-500/20"
+                : "bg-red-100 text-red-500 hover:bg-red-100"
+            } max-w-fit`}
+          >
+            {user.role} ADMIN
+          </Badge>
         </div>
       </div>
-      <Button variant="outline" className="w-full hover:bg-red-500" onClick={handleLogout}>
+      <Button
+        variant="outline"
+        className="w-full hover:bg-red-500"
+        onClick={handleLogout}
+      >
         Logout
       </Button>
     </div>

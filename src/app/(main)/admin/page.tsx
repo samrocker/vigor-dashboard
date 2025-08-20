@@ -23,11 +23,10 @@ const AllAdmin = () => {
             router.push("/users");
           }
         } else {
-          router.push("/users"); // Redirect if user data not found or API error
+          router.push("/users");
         }
       } catch (error) {
-        console.error("Error fetching user role:", error);
-        router.push("/users"); // Redirect on any error
+        router.push("/users");
       } finally {
         setLoading(false);
       }
@@ -45,7 +44,7 @@ const AllAdmin = () => {
   }
 
   if (userRole !== "SUPER") {
-    return null; // Don't render the page content if redirecting
+    return null;
   }
 
   return <AllAdminPage userRole={userRole} />;

@@ -5,23 +5,24 @@ import { useRouter } from "next/navigation";
 import {
   Search,
   RefreshCw,
-  Package, // Icon for products
-  DollarSign, // For price
-  Boxes, // For stock
+  Package,
+  DollarSign,
+  Boxes,
   Calendar,
   Filter,
   ArrowUp,
   ArrowDown,
-  Eye, // For 'View Variant Details'
-  Info, // For error/empty state (remains for "No variants found" scenario)
-  Plus, // For Add Variant
-  Edit, // For Edit Variant
-  Trash2, // For Delete Variant
-  Type, // For variant value/type
-  X, // For removing additional detail fields
+  Eye,
+  Info,
+  Plus,
+  Edit,
+  Trash2,
+  Type,
+  X,
 } from "lucide-react";
 import { getAccessToken } from "@/lib/auth";
 import { ApiResponse, axiosInstance } from "@/lib/axios";
+import { AxiosError } from "axios"; // Import AxiosError for type checking
 
 // Shadcn UI components
 import {
@@ -57,21 +58,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton"; // Added Skeleton import
-import { motion } from "framer-motion"; // Added motion import
+import { Skeleton } from "@/components/ui/skeleton";
+import { motion } from "framer-motion";
 
 // --- Type Definitions ---
 
-// Interface for dynamic key-value pairs in forms (for variant.value)
 interface KeyValuePair {
-  id: string; // Unique ID for React list key
+  id: string;
   key: string;
   value: string;
 }
 
-// Simplified Product interface for nested product data in variant response
 interface ProductForVariant {
   id: string;
   name: string;
@@ -84,19 +82,18 @@ interface ProductForVariant {
   subCategoryId: string | null;
 }
 
-// Main Variant interface
 export interface Variant {
   id: string;
   productId: string;
   name: string;
-  value: { [key: string]: string }; // e.g., { color: "black", size: "M" }
+  value: { [key: string]: string };
   price: number;
   stock: number;
   createdAt: string;
   updatedAt: string;
-  cartItems?: any[]; // Simplified, not used for display in this component
-  orderItems?: any[]; // Simplified, not used for display in this component
-  product?: ProductForVariant; // Full product object if includeRelations=true
+  cartItems?: any[];
+  orderItems?: any[];
+  product?: ProductForVariant;
 }
 
 export interface VariantsData {
@@ -111,11 +108,19 @@ export interface VariantsApiResponse extends ApiResponse {
   data: VariantsData;
 }
 
-// For product filter dropdown options
 interface ProductOption {
   id: string;
   name: string;
 }
+
+// NEW: Form Error Types
+type FormErrors = {
+  productId?: string;
+  name?: string;
+  price?: string;
+  stock?: string;
+  value?: string;
+};
 
 // --- Utility Functions ---
 function formatCurrency(amount: number) {
@@ -138,11 +143,51 @@ function formatDate(dateString: string | null) {
   });
 }
 
+// NEW: Centralized API Error Handler
+const handleApiError = (
+  error: any,
+  context: "fetching" | "creating" | "updating" | "deleting"
+) => {
+  const axiosError = error as AxiosError<ApiResponse>;
+  console.error(`API Error during ${context}:`, axiosError);
+
+  if (axiosError.response) {
+    const { status, data } = axiosError.response;
+    const message = data?.message || "An unknown error occurred.";
+
+    switch (status) {
+      case 400:
+        toast.error(`Validation Error: ${message}`);
+        break;
+      case 401:
+        toast.error("Authentication failed. Please log in again.");
+        break;
+      case 403:
+        toast.error("You don't have permission to perform this action.");
+        break;
+      case 404:
+        toast.error(
+          `The resource could not be found. It might have been deleted.`
+        );
+        break;
+      case 500:
+        toast.error("A server error occurred. Please try again later.");
+        break;
+      default:
+        toast.error(`Error: ${message}`);
+        break;
+    }
+  } else if (axiosError.request) {
+    toast.error("Network error. Please check your connection and try again.");
+  } else {
+    toast.error(`An unexpected error occurred while ${context} the variant.`);
+  }
+};
+
 // --- Component ---
 const AllVariantsPage = () => {
   const [allVariants, setAllVariants] = useState<Variant[]>([]);
   const [loading, setLoading] = useState(true);
-  // Removed error state: const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalVariantsCount, setTotalVariantsCount] = useState(0);
@@ -150,7 +195,7 @@ const AllVariantsPage = () => {
   // Filter states
   const [searchQuery, setSearchQuery] = useState("");
   const [productFilterId, setProductFilterId] = useState<string | "all">("all");
-  const [productOptions, setProductOptions] = useState<ProductOption[]>([]); // For product filter dropdown
+  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
 
   // Sorting states
   const [sortKey, setSortKey] = useState<keyof Variant | null>("createdAt");
@@ -161,21 +206,23 @@ const AllVariantsPage = () => {
   const [createForm, setCreateForm] = useState({
     productId: "",
     name: "",
-    value: [] as KeyValuePair[], // Changed to array of KeyValuePair
+    value: [] as KeyValuePair[],
     price: 0,
     stock: 0,
   });
   const [isCreating, setIsCreating] = useState(false);
+  const [createFormErrors, setCreateFormErrors] = useState<FormErrors>({}); // NEW
 
   const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
   const [updateForm, setUpdateForm] = useState({
     id: "",
     name: "",
-    value: [] as KeyValuePair[], // Changed to array of KeyValuePair
+    value: [] as KeyValuePair[],
     price: 0,
     stock: 0,
   });
   const [isUpdating, setIsUpdating] = useState(false);
+  const [updateFormErrors, setUpdateFormErrors] = useState<FormErrors>({}); // NEW
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [variantToDeleteId, setVariantToDeleteId] = useState<string | null>(
@@ -183,10 +230,9 @@ const AllVariantsPage = () => {
   );
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const token = getAccessToken(); // Assuming you'll use this for auth
+  const token = getAccessToken();
   const router = useRouter();
 
-  // Fetch all variants
   const fetchAllVariants = useCallback(async () => {
     setLoading(true);
     try {
@@ -196,32 +242,28 @@ const AllVariantsPage = () => {
       const data = response.data.data;
       setAllVariants(data?.variants || []);
       setTotalVariantsCount(data?.total || 0);
-      // Removed setError(null);
     } catch (err: any) {
       setAllVariants([]);
-      toast.error(err.message || "Failed to fetch variants. Please try again."); // Display toast error
-      console.error("Fetch variants error:", err);
+      handleApiError(err, "fetching"); // UPDATED
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Fetch product options for dropdowns
   const fetchProductOptions = useCallback(async () => {
     try {
       const response = await axiosInstance.get<
         ApiResponse<{ products: { id: string; name: string }[] }>
-      >("/public/product"); // Assuming public endpoint for product names
+      >("/public/product");
       if (response.data.status === "success" && response.data.data) {
         setProductOptions(response.data.data.products || []);
       }
     } catch (err) {
       console.error("Failed to fetch product options for form:", err);
-      toast.error("Failed to load product options for variant forms."); // Display toast error
+      toast.error("Failed to load product options for variant forms.");
     }
   }, []);
 
-  // Initial data fetch on component mount
   useEffect(() => {
     if (!token) {
       router.push("/login");
@@ -231,11 +273,9 @@ const AllVariantsPage = () => {
     fetchProductOptions();
   }, [token, router, fetchAllVariants, fetchProductOptions]);
 
-  // Memoized filtered and paginated variants
   const filteredAndPaginatedVariants = useMemo(() => {
     let currentVariants = [...allVariants];
 
-    // 1. Apply Search Filter (on variant name or associated product name)
     if (searchQuery) {
       currentVariants = currentVariants.filter(
         (variant) =>
@@ -247,25 +287,20 @@ const AllVariantsPage = () => {
       );
     }
 
-    // 2. Apply Product Filter
     if (productFilterId !== "all") {
       currentVariants = currentVariants.filter(
         (variant) => variant.productId === productFilterId
       );
     }
 
-    // 3. Apply Sorting
     if (sortKey) {
       currentVariants.sort((a, b) => {
         const aValue = a[sortKey];
         const bValue = b[sortKey];
-
-        // Handle null/undefined values for sorting
         if (aValue === null || aValue === undefined)
           return sortDirection === "asc" ? -1 : 1;
         if (bValue === null || bValue === undefined)
           return sortDirection === "asc" ? 1 : -1;
-
         if (typeof aValue === "string" && typeof bValue === "string") {
           return sortDirection === "asc"
             ? aValue.localeCompare(bValue)
@@ -279,18 +314,15 @@ const AllVariantsPage = () => {
           const dateB = new Date(bValue as string).getTime();
           return sortDirection === "asc" ? dateA - dateB : dateB - dateA;
         }
-        return 0; // Should not happen for defined sort keys
+        return 0;
       });
     }
 
-    // 4. Apply Pagination (assuming a fixed items per page for simplicity)
     const variantsPerPage = 10;
     const newTotalPages = Math.ceil(currentVariants.length / variantsPerPage);
     setTotalPages(newTotalPages > 0 ? newTotalPages : 1);
-
     const startIndex = (currentPage - 1) * variantsPerPage;
     const endIndex = startIndex + variantsPerPage;
-
     return currentVariants.slice(startIndex, endIndex);
   }, [
     allVariants,
@@ -299,22 +331,21 @@ const AllVariantsPage = () => {
     sortKey,
     sortDirection,
     currentPage,
-  ]); // Dependencies for memoization
+  ]);
 
-  // --- Handlers ---
   const handleRefresh = () => {
     fetchAllVariants();
-    fetchProductOptions(); // Refresh product options as well
+    fetchProductOptions();
   };
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
-    setCurrentPage(1); // Reset pagination on search
+    setCurrentPage(1);
   };
 
   const handleProductFilterChange = (value: string | "all") => {
     setProductFilterId(value);
-    setCurrentPage(1); // Reset pagination on filter change
+    setCurrentPage(1);
   };
 
   const handleSort = (key: keyof Variant) => {
@@ -336,22 +367,15 @@ const AllVariantsPage = () => {
   };
 
   const handleViewDetails = (variantId: string) => {
-    router.push(`/variant/${variantId}`); // Assuming variant details page path
+    router.push(`/variant/${variantId}`);
   };
 
-  // --- Variant Value (Additional Details) Handlers ---
   const handleAddValueField = (formType: "create" | "update") => {
     const newField = { id: crypto.randomUUID(), key: "", value: "" };
     if (formType === "create") {
-      setCreateForm((prev) => ({
-        ...prev,
-        value: [...prev.value, newField],
-      }));
+      setCreateForm((prev) => ({ ...prev, value: [...prev.value, newField] }));
     } else {
-      setUpdateForm((prev) => ({
-        ...prev,
-        value: [...prev.value, newField],
-      }));
+      setUpdateForm((prev) => ({ ...prev, value: [...prev.value, newField] }));
     }
   };
 
@@ -378,68 +402,66 @@ const AllVariantsPage = () => {
     field: "key" | "value",
     newValue: string
   ) => {
-    if (formType === "create") {
-      setCreateForm((prev) => ({
-        ...prev,
-        value: prev.value.map((detail) =>
-          detail.id === id ? { ...detail, [field]: newValue } : detail
-        ),
-      }));
-    } else {
-      setUpdateForm((prev) => ({
-        ...prev,
-        value: prev.value.map((detail) =>
-          detail.id === id ? { ...detail, [field]: newValue } : detail
-        ),
-      }));
-    }
+    const setter = formType === "create" ? setCreateForm : setUpdateForm;
+    setter((prev: any) => ({
+      ...prev,
+      value: prev.value.map((detail: KeyValuePair) =>
+        detail.id === id ? { ...detail, [field]: newValue } : detail
+      ),
+    }));
   };
 
-  // --- CRUD Handlers ---
+  // NEW: Form Validation Function
+  const validateVariantForm = (
+    form: typeof createForm | typeof updateForm,
+    isUpdate = false
+  ): FormErrors => {
+    const errors: FormErrors = {};
 
-  const handleCreateVariant = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsCreating(true);
-    // Removed setError(null);
-
-    // Basic form validation
-    if (!createForm.productId) {
-      toast.error("Product is required.");
-      setIsCreating(false);
-      return;
+    if (!isUpdate && !(form as typeof createForm).productId) {
+      errors.productId = "A product must be selected.";
     }
-    if (!createForm.name.trim()) {
-      toast.error("Variant Name is required.");
-      setIsCreating(false);
-      return;
+    if (!form.name.trim()) {
+      errors.name = "Variant name is required.";
     }
-    if (createForm.price < 0) {
-      toast.error("Price cannot be negative.");
-      setIsCreating(false);
-      return;
+    if (form.price < 0) {
+      errors.price = "Price cannot be negative.";
     }
-    if (createForm.stock < 0) {
-      toast.error("Stock cannot be negative.");
-      setIsCreating(false);
-      return;
+    if (form.stock < 0 || !Number.isInteger(form.stock)) {
+      errors.stock = "Stock must be a non-negative integer.";
     }
 
-    // Validate Value fields
-    for (const detail of createForm.value) {
+    const hasAtLeastOneDetail = form.value.some(
+      (d) => d.key.trim() && d.value.trim()
+    );
+    if (!hasAtLeastOneDetail) {
+      errors.value =
+        "At least one complete key-value pair is required (e.g., color: red).";
+    }
+    for (const detail of form.value) {
       if (
         (detail.key.trim() && !detail.value.trim()) ||
         (!detail.key.trim() && detail.value.trim())
       ) {
-        toast.error(
-          "All Value fields must have both a key and a value, or be completely empty."
-        );
-        setIsCreating(false);
-        return;
+        errors.value = "All fields must have both a key and a value.";
+        break;
       }
     }
+    return errors;
+  };
 
+  const handleCreateVariant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateFormErrors({});
+
+    const validationErrors = validateVariantForm(createForm);
+    if (Object.keys(validationErrors).length > 0) {
+      setCreateFormErrors(validationErrors);
+      return;
+    }
+
+    setIsCreating(true);
     try {
-      // Convert array of key-value pairs to a single object for 'value'
       const valueObject: { [key: string]: string } = {};
       createForm.value.forEach((detail) => {
         if (detail.key.trim()) {
@@ -447,49 +469,40 @@ const AllVariantsPage = () => {
         }
       });
 
-      // Construct payload, conditionally adding 'value' if not empty
-      const payload: { [key: string]: any } = {
+      const payload = {
         productId: createForm.productId,
         name: createForm.name.trim(),
         price: Number(createForm.price),
         stock: Number(createForm.stock),
+        value: valueObject,
       };
 
-      if (Object.keys(valueObject).length > 0) {
-        payload.value = valueObject;
-      }
-
       const response = await axiosInstance.post("/admin/variant", payload);
-
       if (response.data.status === "success") {
         toast.success("Variant created successfully!");
         setIsCreateDialogOpen(false);
         setCreateForm({
           productId: "",
           name: "",
-          value: [], // Reset to empty array
+          value: [],
           price: 0,
           stock: 0,
         });
-        fetchAllVariants(); // Refresh list
-      } else {
-        toast.error(response.data.message || "Failed to create variant.");
+        fetchAllVariants();
       }
     } catch (err: any) {
-      // Removed setError(err.message || "An unexpected error occurred during creation.");
-      toast.error(err.response?.data?.message || "Error creating variant.");
+      handleApiError(err, "creating"); // UPDATED
     } finally {
-      setIsCreating(false); // <--- IMPORTANT: This ensures loading state is always reset
+      setIsCreating(false);
     }
   };
 
   const openUpdateDialog = (variant: Variant) => {
-    // Convert variant.value object to array of key-value pairs for form
     const valueArray: KeyValuePair[] = variant.value
       ? Object.entries(variant.value).map(([key, val]) => ({
-          id: crypto.randomUUID(), // Assign a unique ID for React list key
+          id: crypto.randomUUID(),
           key: key,
-          value: String(val), // Ensure value is string
+          value: String(val),
         }))
       : [];
 
@@ -500,47 +513,23 @@ const AllVariantsPage = () => {
       price: variant.price,
       stock: variant.stock,
     });
+    setUpdateFormErrors({}); // Clear errors on open
     setIsUpdateDialogOpen(true);
   };
 
   const handleUpdateVariant = async (e: React.FormEvent) => {
     e.preventDefault();
+    setUpdateFormErrors({});
+
+    const validationErrors = validateVariantForm(updateForm, true);
+    if (Object.keys(validationErrors).length > 0) {
+      setUpdateFormErrors(validationErrors);
+      toast.error("Please fix the errors in the form.");
+      return;
+    }
+
     setIsUpdating(true);
-    // Removed setError(null);
-
-    // Basic form validation
-    if (!updateForm.name.trim()) {
-      toast.error("Variant Name is required.");
-      setIsUpdating(false);
-      return;
-    }
-    if (updateForm.price < 0) {
-      toast.error("Price cannot be negative.");
-      setIsUpdating(false);
-      return;
-    }
-    if (updateForm.stock < 0) {
-      toast.error("Stock cannot be negative.");
-      setIsUpdating(false);
-      return;
-    }
-
-    // Validate Value fields
-    for (const detail of updateForm.value) {
-      if (
-        (detail.key.trim() && !detail.value.trim()) ||
-        (!detail.key.trim() && detail.value.trim())
-      ) {
-        toast.error(
-          "All Value fields must have both a key and a value, or be completely empty."
-        );
-        setIsUpdating(false);
-        return;
-      }
-    }
-
     try {
-      // Convert array of key-value pairs to a single object for 'value'
       const valueObject: { [key: string]: string } = {};
       updateForm.value.forEach((detail) => {
         if (detail.key.trim()) {
@@ -548,36 +537,26 @@ const AllVariantsPage = () => {
         }
       });
 
-      // Construct payload, conditionally adding 'value' if not empty
-      const payload: { [key: string]: any } = {
+      const payload = {
         name: updateForm.name.trim(),
         price: Number(updateForm.price),
         stock: Number(updateForm.stock),
+        value: valueObject,
       };
-
-      if (Object.keys(valueObject).length > 0) {
-        payload.value = valueObject;
-      } else {
-        payload.value = null; // Explicitly send null if no values are provided to clear it
-      }
 
       const response = await axiosInstance.patch(
         `/admin/variant/${updateForm.id}`,
         payload
       );
-
       if (response.data.status === "success") {
         toast.success("Variant updated successfully!");
         setIsUpdateDialogOpen(false);
-        fetchAllVariants(); // Refresh list
-      } else {
-        toast.error(response.data.message || "Failed to update variant.");
+        fetchAllVariants();
       }
     } catch (err: any) {
-      // Removed setError(err.message || "An unexpected error occurred during update.");
-      toast.error(err.response?.data?.message || "Error updating variant.");
+      handleApiError(err, "updating"); // UPDATED
     } finally {
-      setIsUpdating(false); // <--- IMPORTANT: This ensures loading state is always reset
+      setIsUpdating(false);
     }
   };
 
@@ -588,9 +567,7 @@ const AllVariantsPage = () => {
 
   const handleConfirmDeleteVariant = async () => {
     if (!variantToDeleteId) return;
-
     setIsDeleting(true);
-    // Removed setError(null);
     try {
       const response = await axiosInstance.delete(
         `/admin/variant/${variantToDeleteId}`
@@ -600,18 +577,14 @@ const AllVariantsPage = () => {
         setIsDeleteDialogOpen(false);
         setVariantToDeleteId(null);
         fetchAllVariants();
-      } else {
-        toast.error(response.data.message || "Failed to delete variant.");
       }
     } catch (err: any) {
-      // Removed setError(err.message || "An unexpected error occurred during deletion.");
-      toast.error(err.response?.data?.message || "Error deleting variant.");
+      handleApiError(err, "deleting"); // UPDATED
     } finally {
-      setIsDeleting(false); // <--- IMPORTANT: This ensures loading state is always reset
+      setIsDeleting(false);
     }
   };
 
-  // --- Render ---
   return (
     <div className="min-h-screen bg-background">
       {/* Header Section */}
@@ -640,8 +613,7 @@ const AllVariantsPage = () => {
               onClick={() => setIsCreateDialogOpen(true)}
               disabled={loading}
             >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Variant
+              <Plus className="h-4 w-4 mr-2" /> Add Variant
             </Button>
           </div>
         </div>
@@ -657,12 +629,8 @@ const AllVariantsPage = () => {
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8"
         >
           {loading ? (
-            // Skeleton for Stats Cards
             [...Array(4)].map((_, idx) => (
-              <Card
-                key={idx}
-                className="hover:shadow-md transition-shadow duration-200"
-              >
+              <Card key={idx}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <Skeleton className="h-4 w-32" />
                   <Skeleton className="h-4 w-4 rounded-full" />
@@ -674,7 +642,7 @@ const AllVariantsPage = () => {
             ))
           ) : (
             <>
-              <Card className="hover:shadow-md transition-shadow duration-200">
+              <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
                     Total Variants
@@ -687,7 +655,7 @@ const AllVariantsPage = () => {
                   </div>
                 </CardContent>
               </Card>
-              <Card className="hover:shadow-md transition-shadow duration-200">
+              <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
                     Total Variant Stock
@@ -696,14 +664,11 @@ const AllVariantsPage = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-orange-500">
-                    {allVariants.reduce(
-                      (sum, variant) => sum + (variant.stock || 0),
-                      0
-                    )}
+                    {allVariants.reduce((sum, v) => sum + (v.stock || 0), 0)}
                   </div>
                 </CardContent>
               </Card>
-              <Card className="hover:shadow-md transition-shadow duration-200">
+              <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
                     Unique Products with Variants
@@ -716,7 +681,7 @@ const AllVariantsPage = () => {
                   </div>
                 </CardContent>
               </Card>
-              <Card className="hover:shadow-md transition-shadow duration-200">
+              <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
                     Out of Stock Variants
@@ -753,61 +718,44 @@ const AllVariantsPage = () => {
                   disabled={loading}
                 />
               </div>
-              <div className="flex flex-col sm:flex-row gap-4 items-center">
-                {/* Product Filter */}
-                <div className="relative">
+              <div className="w-full sm:w-auto flex flex-wrap gap-4 items-center justify-end">
+                <div className="relative flex-grow">
                   <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <Select
                     value={productFilterId}
                     onValueChange={handleProductFilterChange}
                     disabled={loading || productOptions.length === 0}
                   >
-                    <SelectTrigger className="w-[180px] pl-10">
+                    <SelectTrigger className="w-full min-w-[180px] pl-10">
                       <SelectValue placeholder="Filter by Product" />
                     </SelectTrigger>
-                    <SelectContent className="rounded-lg shadow-lg bg-popover">
-                      {/* Added "All Products" option here */}
-                      <SelectItem
-                        value="all"
-                      >
-                        All Products
-                      </SelectItem>
-                      {productOptions.length === 0 ? (
-                        <SelectItem value="no-products" disabled>
-                          No products available
-                        </SelectItem>
-                      ) : (
-                        productOptions.map((product) => (
-                          <SelectItem
-                            key={product.id}
-                            value={product.id}
-                          >
-                            {product.name}
+                    <SelectContent>
+                      <SelectItem value="all">All Products</SelectItem>
+                      {productOptions.length > 0 &&
+                        productOptions.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
                           </SelectItem>
-                        ))
-                      )}
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
-
                 <Button
                   onClick={handleRefresh}
                   disabled={loading}
                   variant="outline"
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2 flex-shrink-0"
                   aria-label="Refresh variant list"
                 >
                   <RefreshCw
                     className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
-                  />
+                  />{" "}
                   Refresh
                 </Button>
               </div>
             </div>
           </Card>
         </motion.div>
-
-        {/* Removed Error Message component */}
 
         {/* Variants Table */}
         <motion.div
@@ -816,59 +764,26 @@ const AllVariantsPage = () => {
           transition={{ delay: 0.4, duration: 0.5 }}
         >
           {loading ? (
-            // Skeleton for Variants Table
             <Card className="border-border shadow-sm">
               <CardContent>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>
-                        <Skeleton className="h-4 w-32" />
-                      </TableHead>
-                      <TableHead>
-                        <Skeleton className="h-4 w-24" />
-                      </TableHead>
-                      <TableHead>
-                        <Skeleton className="h-4 w-16" />
-                      </TableHead>
-                      <TableHead>
-                        <Skeleton className="h-4 w-20" />
-                      </TableHead>
-                      <TableHead>
-                        <Skeleton className="h-4 w-12" />
-                      </TableHead>
-                      <TableHead>
-                        <Skeleton className="h-4 w-28" />
-                      </TableHead>
-                      <TableHead className="text-right">
-                        <Skeleton className="h-4 w-16" />
-                      </TableHead>
+                      {[...Array(6)].map((_, i) => (
+                        <TableHead key={i}>
+                          <Skeleton className="h-4 w-full" />
+                        </TableHead>
+                      ))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {[...Array(5)].map((_, idx) => (
+                    {[...Array(10)].map((_, idx) => (
                       <TableRow key={idx}>
-                        <TableCell>
-                          <Skeleton className="h-4 w-32" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-16" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-12" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-28" />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Skeleton className="h-8 w-16" />
-                        </TableCell>
+                        {[...Array(6)].map((_, i) => (
+                          <TableCell key={i}>
+                            <Skeleton className="h-4 w-full" />
+                          </TableCell>
+                        ))}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -939,12 +854,12 @@ const AllVariantsPage = () => {
                         <TableCell className="text-foreground">
                           {formatCurrency(variant.price)}
                         </TableCell>
-                        <TableCell className="text-muted-foreground">
+                        <TableCell>
                           <Badge
                             className={
                               variant.stock === 0
-                                ? "bg-red-100 hover:bg-red-100 text-red-800"
-                                : "bg-blue-100 hover:bg-blue-100 text-blue-800"
+                                ? "bg-red-100 text-red-800"
+                                : "bg-blue-100 text-blue-800"
                             }
                           >
                             {variant.stock}
@@ -959,21 +874,19 @@ const AllVariantsPage = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => handleViewDetails(variant.id)}
-                              className="hover:text-primary hover:bg-primary/10 border-border"
                               disabled={loading}
+                              className="hover:text-primary hover:bg-primary/10 border-border"
                             >
-                              <Eye className="h-4 w-4 mr-1" />
-                              View
+                              <Eye className="h-4 w-4 mr-1" /> View
                             </Button>
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => openUpdateDialog(variant)}
-                              className="hover:text-primary hover:bg-primary/10 border-border"
                               disabled={loading}
+                              className="hover:text-primary hover:bg-primary/10 border-border"
                             >
-                              <Edit className="h-4 w-4 mr-1" />
-                              Edit
+                              <Edit className="h-4 w-4 mr-1" /> Edit
                             </Button>
                             <Button
                               variant="outline"
@@ -982,18 +895,17 @@ const AllVariantsPage = () => {
                                 handleDeleteVariantClick(variant.id)
                               }
                               disabled={isDeleting || loading}
-                              className="hover:bg-destructive/10 hover:border-destructive hover:text-destructive border-border"
+                              className="hover:bg-destructive/10 hover:border-destructive hover:text-destructive"
                             >
                               {isDeleting &&
                               variantToDeleteId === variant.id ? (
-                                <div className="flex items-center">
+                                <>
                                   <LoadingSpinner className="h-4 w-4 mr-1 text-destructive" />{" "}
                                   Deleting...
-                                </div>
+                                </>
                               ) : (
                                 <>
-                                  <Trash2 className="h-4 w-4 mr-1" />
-                                  Delete
+                                  <Trash2 className="h-4 w-4 mr-1" /> Delete
                                 </>
                               )}
                             </Button>
@@ -1017,25 +929,21 @@ const AllVariantsPage = () => {
             className="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4"
           >
             <Button
-              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
               disabled={currentPage === 1 || loading}
               variant="outline"
               size="sm"
-              aria-label="Previous page"
             >
               Previous
             </Button>
-            <span className="text-muted-foreground text-sm sm:text-base">
+            <span className="text-muted-foreground text-sm">
               Page {currentPage} of {totalPages}
             </span>
             <Button
-              onClick={() =>
-                setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-              }
+              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
               disabled={currentPage === totalPages || loading}
               variant="outline"
               size="sm"
-              aria-label="Next page"
             >
               Next
             </Button>
@@ -1049,7 +957,8 @@ const AllVariantsPage = () => {
         onOpenChange={(open) => {
           setIsCreateDialogOpen(open);
           if (!open) {
-            // Reset form to initial state when dialog closes
+            setIsCreating(false);
+            setCreateFormErrors({});
             setCreateForm({
               productId: "",
               name: "",
@@ -1057,9 +966,6 @@ const AllVariantsPage = () => {
               price: 0,
               stock: 0,
             });
-            // Importantly, the isCreating state should be handled by the form submission's finally block.
-            // If the dialog is closed externally (e.g., ESC key), and an API call was somehow still pending,
-            // the finally block will correctly reset isCreating.
           }
         }}
       >
@@ -1069,7 +975,7 @@ const AllVariantsPage = () => {
           </DialogHeader>
           <form onSubmit={handleCreateVariant} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
+              <div className="md:col-span-2">
                 <label
                   htmlFor="createProductId"
                   className="block text-sm font-medium text-foreground mb-1"
@@ -1078,30 +984,29 @@ const AllVariantsPage = () => {
                 </label>
                 <Select
                   value={createForm.productId}
-                  onValueChange={(value) =>
-                    setCreateForm({ ...createForm, productId: value })
+                  onValueChange={(v) =>
+                    setCreateForm({ ...createForm, productId: v })
                   }
                   disabled={
                     isCreating || productOptions.length === 0 || loading
                   }
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger>
                     <SelectValue placeholder="Select a product" />
                   </SelectTrigger>
-                  <SelectContent className="rounded-lg shadow-lg bg-popover">
-                    {productOptions.length === 0 ? (
-                      <SelectItem value="no-products" disabled>
-                        No products available
+                  <SelectContent>
+                    {productOptions.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
                       </SelectItem>
-                    ) : (
-                      productOptions.map((product) => (
-                        <SelectItem key={product.id} value={product.id}>
-                          {product.name}
-                        </SelectItem>
-                      ))
-                    )}
+                    ))}
                   </SelectContent>
                 </Select>
+                {createFormErrors.productId && (
+                  <p className="text-sm text-destructive mt-1">
+                    {createFormErrors.productId}
+                  </p>
+                )}
               </div>
               <div>
                 <label
@@ -1119,8 +1024,12 @@ const AllVariantsPage = () => {
                   }
                   placeholder="e.g., Black Small"
                   disabled={isCreating}
-                  required
                 />
+                {createFormErrors.name && (
+                  <p className="text-sm text-destructive mt-1">
+                    {createFormErrors.name}
+                  </p>
+                )}
               </div>
               <div>
                 <label
@@ -1141,11 +1050,15 @@ const AllVariantsPage = () => {
                   }
                   placeholder="Enter price"
                   disabled={isCreating}
-                  required
                   min="0"
                 />
+                {createFormErrors.price && (
+                  <p className="text-sm text-destructive mt-1">
+                    {createFormErrors.price}
+                  </p>
+                )}
               </div>
-              <div>
+              <div className="md:col-span-2">
                 <label
                   htmlFor="createStock"
                   className="block text-sm font-medium text-foreground mb-1"
@@ -1164,20 +1077,24 @@ const AllVariantsPage = () => {
                   }
                   placeholder="Enter stock quantity"
                   disabled={isCreating}
-                  required
                   min="0"
                 />
+                {createFormErrors.stock && (
+                  <p className="text-sm text-destructive mt-1">
+                    {createFormErrors.stock}
+                  </p>
+                )}
               </div>
               <div className="md:col-span-2">
                 <p className="block text-sm font-medium text-foreground mb-1">
-                  Value Details
+                  Value Details <span className="text-destructive">*</span>
                 </p>
                 <div className="space-y-2">
-                  {createForm.value.map((detail, index) => (
+                  {createForm.value.map((detail) => (
                     <div key={detail.id} className="flex items-center gap-2">
                       <Input
                         type="text"
-                        placeholder="Key"
+                        placeholder="Key (e.g., Color)"
                         value={detail.key}
                         onChange={(e) =>
                           handleValueChange(
@@ -1189,11 +1106,10 @@ const AllVariantsPage = () => {
                         }
                         disabled={isCreating}
                         className="w-1/2"
-                        required={!!detail.value.trim()} // Required if value is not empty
                       />
                       <Input
                         type="text"
-                        placeholder="Value"
+                        placeholder="Value (e.g., Red)"
                         value={detail.value}
                         onChange={(e) =>
                           handleValueChange(
@@ -1205,22 +1121,26 @@ const AllVariantsPage = () => {
                         }
                         disabled={isCreating}
                         className="w-1/2"
-                        required={!!detail.key.trim()} // Required if key is not empty
                       />
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
+                        size="icon"
                         onClick={() =>
                           handleRemoveValueField("create", detail.id)
                         }
                         disabled={isCreating}
-                        className="text-destructive hover:bg-destructive/10"
+                        className="text-destructive hover:bg-destructive/10 h-9 w-9"
                       >
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
                   ))}
+                  {createFormErrors.value && (
+                    <p className="text-sm text-destructive mt-1">
+                      {createFormErrors.value}
+                    </p>
+                  )}
                   <Button
                     type="button"
                     variant="outline"
@@ -1244,9 +1164,9 @@ const AllVariantsPage = () => {
               </Button>
               <Button type="submit" disabled={isCreating}>
                 {isCreating ? (
-                  <div className="flex items-center">
+                  <>
                     <LoadingSpinner className="h-4 w-4 mr-2" /> Creating...
-                  </div>
+                  </>
                 ) : (
                   "Create Variant"
                 )}
@@ -1262,15 +1182,9 @@ const AllVariantsPage = () => {
         onOpenChange={(open) => {
           setIsUpdateDialogOpen(open);
           if (!open) {
-            // Reset form to initial state when dialog closes
-            setUpdateForm({
-              id: "",
-              name: "",
-              value: [],
-              price: 0,
-              stock: 0,
-            });
-            // The isUpdating state should be handled by the form submission's finally block.
+            setIsUpdating(false);
+            setUpdateFormErrors({});
+            setUpdateForm({ id: "", name: "", value: [], price: 0, stock: 0 });
           }
         }}
       >
@@ -1294,10 +1208,13 @@ const AllVariantsPage = () => {
                   onChange={(e) =>
                     setUpdateForm({ ...updateForm, name: e.target.value })
                   }
-                  placeholder="e.g., Black Small"
                   disabled={isUpdating}
-                  required
                 />
+                {updateFormErrors.name && (
+                  <p className="text-sm text-destructive mt-1">
+                    {updateFormErrors.name}
+                  </p>
+                )}
               </div>
               <div>
                 <label
@@ -1316,13 +1233,16 @@ const AllVariantsPage = () => {
                       price: Number(e.target.value),
                     })
                   }
-                  placeholder="Enter price"
                   disabled={isUpdating}
-                  required
                   min="0"
                 />
+                {updateFormErrors.price && (
+                  <p className="text-sm text-destructive mt-1">
+                    {updateFormErrors.price}
+                  </p>
+                )}
               </div>
-              <div>
+              <div className="md:col-span-2">
                 <label
                   htmlFor="updateStock"
                   className="block text-sm font-medium text-foreground mb-1"
@@ -1339,22 +1259,25 @@ const AllVariantsPage = () => {
                       stock: Number(e.target.value),
                     })
                   }
-                  placeholder="Enter stock quantity"
                   disabled={isUpdating}
-                  required
                   min="0"
                 />
+                {updateFormErrors.stock && (
+                  <p className="text-sm text-destructive mt-1">
+                    {updateFormErrors.stock}
+                  </p>
+                )}
               </div>
               <div className="md:col-span-2">
                 <p className="block text-sm font-medium text-foreground mb-1">
-                  Value Details
+                  Value Details <span className="text-destructive">*</span>
                 </p>
                 <div className="space-y-2">
-                  {updateForm.value.map((detail, index) => (
+                  {updateForm.value.map((detail) => (
                     <div key={detail.id} className="flex items-center gap-2">
                       <Input
                         type="text"
-                        placeholder="Key"
+                        placeholder="Key (e.g., Color)"
                         value={detail.key}
                         onChange={(e) =>
                           handleValueChange(
@@ -1366,11 +1289,10 @@ const AllVariantsPage = () => {
                         }
                         disabled={isUpdating}
                         className="w-1/2"
-                        required={!!detail.value.trim()} // Required if value is not empty
                       />
                       <Input
                         type="text"
-                        placeholder="Value"
+                        placeholder="Value (e.g., Red)"
                         value={detail.value}
                         onChange={(e) =>
                           handleValueChange(
@@ -1382,22 +1304,26 @@ const AllVariantsPage = () => {
                         }
                         disabled={isUpdating}
                         className="w-1/2"
-                        required={!!detail.key.trim()} // Required if key is not empty
                       />
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
+                        size="icon"
                         onClick={() =>
                           handleRemoveValueField("update", detail.id)
                         }
                         disabled={isUpdating}
-                        className="text-destructive hover:bg-destructive/10"
+                        className="text-destructive hover:bg-destructive/10 h-9 w-9"
                       >
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
                   ))}
+                  {updateFormErrors.value && (
+                    <p className="text-sm text-destructive mt-1">
+                      {updateFormErrors.value}
+                    </p>
+                  )}
                   <Button
                     type="button"
                     variant="outline"
@@ -1421,9 +1347,9 @@ const AllVariantsPage = () => {
               </Button>
               <Button type="submit" disabled={isUpdating}>
                 {isUpdating ? (
-                  <div className="flex items-center">
+                  <>
                     <LoadingSpinner className="h-4 w-4 mr-2" /> Updating...
-                  </div>
+                  </>
                 ) : (
                   "Update Variant"
                 )}
@@ -1438,7 +1364,7 @@ const AllVariantsPage = () => {
         open={isDeleteDialogOpen}
         onOpenChange={(open) => {
           setIsDeleteDialogOpen(open);
-          if (!open) setIsDeleting(false); // <--- Kept this one, as it's not tied to an active API call on dialog close.
+          if (!open) setIsDeleting(false);
         }}
       >
         <DialogContent className="sm:max-w-md">
@@ -1465,14 +1391,12 @@ const AllVariantsPage = () => {
                 disabled={isDeleting}
               >
                 {isDeleting ? (
-                  <div className="flex items-center">
-                    <LoadingSpinner className="h-4 w-4 mr-1 text-destructive" />{" "}
-                    Deleting...
-                  </div>
+                  <>
+                    <LoadingSpinner className="h-4 w-4 mr-1" /> Deleting...
+                  </>
                 ) : (
                   <>
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Delete
+                    <Trash2 className="h-4 w-4 mr-1" /> Delete
                   </>
                 )}
               </Button>

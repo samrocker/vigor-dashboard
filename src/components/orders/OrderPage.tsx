@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ApiResponse, axiosInstance } from "@/lib/axios";
+import { isAxiosError } from "axios"; // Import for type-safe error handling
 import {
   Card,
   CardHeader,
@@ -177,13 +178,13 @@ const paymentStatusOptions: PaymentStatus[] = [
 
 // --- Color Mappings (consistent with AdminOrderManagement) ---
 const orderStatusColors: Record<OrderStatus, string> = {
-  PENDING: "bg-yellow-100 text-yellow-800", // Changed from orange
-  CONFIRMED: "bg-blue-100 text-blue-800", // Changed from orange
-  PROCESSING: "bg-purple-100 text-purple-800", // Changed from orange
-  SHIPPED: "bg-indigo-100 text-indigo-800", // Changed from blue
+  PENDING: "bg-yellow-100 text-yellow-800",
+  CONFIRMED: "bg-blue-100 text-blue-800",
+  PROCESSING: "bg-purple-100 text-purple-800",
+  SHIPPED: "bg-indigo-100 text-indigo-800",
   DELIVERED: "bg-green-100 text-green-800",
-  CANCELLED: "bg-red-100 text-red-800", // Changed from destructive/10
-  REFUNDED: "bg-gray-100 text-gray-800", // Changed from purple
+  CANCELLED: "bg-red-100 text-red-800",
+  REFUNDED: "bg-gray-100 text-gray-800",
 };
 
 const paymentStatusColors: Record<PaymentStatus, string> = {
@@ -194,6 +195,28 @@ const paymentStatusColors: Record<PaymentStatus, string> = {
 };
 
 // --- Utility Functions ---
+
+/**
+ * Extracts a user-friendly error message from an API error object.
+ * @param error The error object caught in a try-catch block.
+ * @param defaultMessage A fallback message if no specific message can be found.
+ * @returns A user-friendly error string.
+ */
+const getApiErrorMessage = (error: unknown, defaultMessage: string): string => {
+  if (isAxiosError(error)) {
+    // Check if the backend sent a specific error message
+    if (error.response?.data?.message) {
+      return error.response.data.message;
+    }
+  }
+  // Fallback to the standard error message property
+  if (error instanceof Error) {
+    return error.message;
+  }
+  // Return the default message if all else fails
+  return defaultMessage;
+};
+
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -224,7 +247,6 @@ const OrderDetailsPage = () => {
   const [userName, setUserName] = useState<string | null>(null);
   const [loadingOrder, setLoadingOrder] = useState(true);
   const [loadingUserName, setLoadingUserName] = useState(false);
-  // Removed error state: const [error, setError] = useState<string | null>(null);
 
   const [productDetailsMap, setProductDetailsMap] = useState<
     Map<string, ProductForOrderItemDetails>
@@ -252,11 +274,16 @@ const OrderDetailsPage = () => {
 
   useEffect(() => {
     const fetchRelatedDetails = async () => {
+      if (!order?.items || order.items.length === 0) {
+        setLoadingRelatedDetails(false);
+        return;
+      }
+
       setLoadingRelatedDetails(true);
       const uniqueProductIds = new Set<string>();
       const uniqueVariantIds = new Set<string>();
 
-      order?.items?.forEach((item) => {
+      order.items.forEach((item) => {
         uniqueProductIds.add(item.productId);
         if (item.variantId) uniqueVariantIds.add(item.variantId);
       });
@@ -276,8 +303,12 @@ const OrderDetailsPage = () => {
             newProductDetails.set(pId, response.data.data.product);
           }
         } catch (err) {
+          const errorMessage = getApiErrorMessage(
+            err,
+            "An unknown error occurred."
+          );
           console.error(`Failed to fetch product ${pId}:`, err);
-          toast.error(`Failed to load details for product ${pId}.`); // Show toast for failed product fetch
+          toast.error(`Failed to load product ${pId}: ${errorMessage}`);
         }
       });
 
@@ -293,23 +324,23 @@ const OrderDetailsPage = () => {
             newVariantDetails.set(vId, response.data.data.variant);
           }
         } catch (err) {
+          const errorMessage = getApiErrorMessage(
+            err,
+            "An unknown error occurred."
+          );
           console.error(`Failed to fetch variant ${vId}:`, err);
-          toast.error(`Failed to load details for variant ${vId}.`); // Show toast for failed variant fetch
+          toast.error(`Failed to load variant ${vId}: ${errorMessage}`);
         }
       });
 
-      await Promise.allSettled([...productPromises, ...variantPromises]); // Use Promise.allSettled to ensure all promises resolve
+      await Promise.allSettled([...productPromises, ...variantPromises]);
 
       setProductDetailsMap(newProductDetails);
       setVariantDetailsMap(newVariantDetails);
       setLoadingRelatedDetails(false);
     };
 
-    if (order?.items && order.items.length > 0) {
-      fetchRelatedDetails();
-    } else if (order) {
-      setLoadingRelatedDetails(false);
-    }
+    fetchRelatedDetails();
   }, [order?.items]);
 
   const fetchOrderDetails = async (id: string) => {
@@ -320,16 +351,16 @@ const OrderDetailsPage = () => {
       );
       if (response.data.status === "success" && response.data.data?.order) {
         setOrder(response.data.data.order);
-        // Removed setError(null);
       } else {
-        toast.error(response.data.message || "Failed to fetch order details."); // Show toast on API success:false
+        toast.error(response.data.message || "Failed to fetch order details.");
         setOrder(null);
       }
-    } catch (err: any) {
-      toast.error(
-        err.message ||
-          "An unexpected error occurred while fetching order details."
-      ); // Show toast on API error
+    } catch (err: unknown) {
+      const errorMessage = getApiErrorMessage(
+        err,
+        "An unexpected error occurred while fetching order details."
+      );
+      toast.error(errorMessage);
       setOrder(null);
     } finally {
       setLoadingOrder(false);
@@ -346,12 +377,16 @@ const OrderDetailsPage = () => {
         setUserName(response.data.data.user.name);
       } else {
         setUserName("Unknown User");
-        toast.error(`Failed to load user details for ID: ${userId}.`); // Show toast for user fetch failure
+        toast.error(
+          response.data.message ||
+            `Failed to load user details for ID: ${userId}.`
+        );
       }
     } catch (err) {
+      const errorMessage = getApiErrorMessage(err, "Could not fetch user.");
       console.error(`Failed to fetch user ${userId}:`, err);
       setUserName("Unknown User");
-      toast.error(`Failed to load user details for ID: ${userId}.`); // Show toast for user fetch error
+      toast.error(`Failed to load user: ${errorMessage}`);
     } finally {
       setLoadingUserName(false);
     }
@@ -381,18 +416,16 @@ const OrderDetailsPage = () => {
           if (!prevOrder) return null;
           return { ...prevOrder, [field]: newValue };
         });
-        toast.success(
-          `Order ${order.id} ${
-            field === "status" ? "status" : "payment status"
-          } updated to ${newValue}.`
-        );
+        toast.success(`Order ${field} updated to ${newValue} successfully.`);
       } else {
         toast.error(response.data.message || `Failed to update ${field}.`);
       }
-    } catch (err: any) {
-      toast.error(
-        err.message || `An unexpected error occurred while updating ${field}.`
+    } catch (err: unknown) {
+      const errorMessage = getApiErrorMessage(
+        err,
+        `An unexpected error occurred while updating ${field}.`
       );
+      toast.error(errorMessage);
       console.error(`Update ${field} error:`, err);
     } finally {
       if (field === "status") {
@@ -449,91 +482,10 @@ const OrderDetailsPage = () => {
               ))}
             </CardContent>
           </Card>
-
-          <Card className="mb-8 shadow-sm">
-            <CardHeader>
-              <Skeleton className="h-6 w-56 mb-2" />
-              <Skeleton className="h-4 w-full" />
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Variant</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Unit Price</TableHead>
-                    <TableHead>Total Price</TableHead>
-                    <TableHead>Ordered At</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {[...Array(3)].map((_, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell>
-                        <Skeleton className="h-4 w-32" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-24" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-12" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-16" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-20" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-28" />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Skeleton className="h-8 w-16" />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-
-          <Card className="mb-8 shadow-sm">
-            <CardHeader>
-              <Skeleton className="h-6 w-56 mb-2" />
-              <Skeleton className="h-4 w-full" />
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              {[...Array(7)].map((_, idx) => (
-                <div key={idx}>
-                  <Skeleton className="h-4 w-24 mb-2" />
-                  <Skeleton className="h-4 w-48" />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm">
-            <CardHeader>
-              <Skeleton className="h-6 w-56 mb-2" />
-              <Skeleton className="h-4 w-full" />
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              {[...Array(7)].map((_, idx) => (
-                <div key={idx}>
-                  <Skeleton className="h-4 w-24 mb-2" />
-                  <Skeleton className="h-4 w-48" />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
         </div>
       </motion.div>
     );
   }
-
-  // Removed the `if (error && !order)` block since errors are handled by toasts.
 
   if (!order && !loadingOrder) {
     return (
@@ -547,13 +499,13 @@ const OrderDetailsPage = () => {
           <CardContent className="pt-6">
             <div className="text-muted-foreground text-center font-medium">
               <Info className="h-8 w-8 mx-auto mb-3" />
-              <p>Order not found.</p>
+              <p>Order not found or an error occurred.</p>
               <Button
-                onClick={() => router.back()}
+                onClick={() => router.push("//orders")}
                 className="mt-4"
                 variant="outline"
               >
-                Go Back
+                Go Back to Orders
               </Button>
             </div>
           </CardContent>
@@ -587,8 +539,8 @@ const OrderDetailsPage = () => {
             </div>
             <Button
               variant="outline"
-              onClick={() => router.push('/order')}
-              className="hover:bg-primary"
+              onClick={() => router.push("/order")}
+              className="hover:bg-primary hover:text-primary-foreground"
               disabled={loadingOrder || !order}
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -651,8 +603,6 @@ const OrderDetailsPage = () => {
                       {formatCurrency(order.totalAmount)}
                     </span>
                   </div>
-
-                  {/* Order Status Dropdown - FIXED UI ALIGNMENT AND COLORS */}
                   <div>
                     <p className="text-muted-foreground mb-1">Order Status:</p>
                     <Select
@@ -660,40 +610,31 @@ const OrderDetailsPage = () => {
                       onValueChange={(newStatus: OrderStatus) =>
                         handleUpdateStatus("status", newStatus)
                       }
-                      disabled={
-                        isUpdatingOrderStatus || loadingOrder || !order
-                      }
+                      disabled={isUpdatingOrderStatus || loadingOrder || !order}
                     >
                       <SelectTrigger
                         className={`
-                          relative flex h-8 items-center justify-between
-                          rounded-full px-3 py-1 text-sm font-medium
-                          ${orderStatusColors[order.status]}
+                          w-[140px] h-8 rounded-full px-3 py-1 text-sm font-medium
                           border-none focus:ring-2 focus:ring-offset-2 focus:ring-primary
                           transition-all duration-200
+                          ${orderStatusColors[order.status]}
                           ${
                             isUpdatingOrderStatus
                               ? "opacity-70 cursor-not-allowed"
                               : ""
                           }
-                          w-[140px]  width for consistent badge-like appearance
                         `}
-                        aria-label={`Order status for order ${order.id}`}
+                        aria-label={`Update order status`}
                       >
-                        <SelectValue
-                          className="flex-grow text-center text-current" // Centers text within SelectValue's available space
-                          placeholder="Select Status"
-                        >
-                          {/* The actual displayed value is rendered directly inside SelectValue by shadcn/ui */}
-                          {order.status}
-                        </SelectValue>
-                        {isUpdatingOrderStatus && (
-                          // Position spinner at the end, outside of SelectValue, but still within SelectTrigger
-                          <LoadingSpinner className="h-3 w-3 text-current ml-2" />
-                        )}
+                        <div className="flex items-center justify-center w-full">
+                          <SelectValue placeholder="Select Status" />
+                          {isUpdatingOrderStatus && (
+                            <LoadingSpinner className="h-4 w-4 text-current ml-2" />
+                          )}
+                        </div>
                       </SelectTrigger>
                       <SelectContent
-                        position="popper" // ADD THIS PROP TO KEEP DROPDOWN FROM SCROLLING
+                        position="popper"
                         className="rounded-lg shadow-lg bg-popover"
                       >
                         {orderStatusOptions.map((status) => (
@@ -714,7 +655,6 @@ const OrderDetailsPage = () => {
                     </Select>
                   </div>
 
-                  {/* Payment Status Dropdown - FIXED UI ALIGNMENT AND COLORS */}
                   <div>
                     <p className="text-muted-foreground mb-1">
                       Payment Status:
@@ -730,34 +670,27 @@ const OrderDetailsPage = () => {
                     >
                       <SelectTrigger
                         className={`
-                          relative flex h-8 items-center justify-between
-                          rounded-full px-3 py-1 text-sm font-medium
-                          ${paymentStatusColors[order.paymentStatus]}
+                          w-[140px] h-8 rounded-full px-3 py-1 text-sm font-medium
                           border-none focus:ring-2 focus:ring-offset-2 focus:ring-primary
                           transition-all duration-200
+                          ${paymentStatusColors[order.paymentStatus]}
                           ${
                             isUpdatingPaymentStatus
                               ? "opacity-70 cursor-not-allowed"
                               : ""
                           }
-                          w-[140px] width for consistent badge-like appearance
                         `}
-                        aria-label={`Payment status for order ${order.id}`}
+                        aria-label={`Update payment status`}
                       >
-                        <SelectValue
-                          className="flex-grow text-center text-current" // Centers text within SelectValue's available space
-                          placeholder="Select Status"
-                        >
-                          {/* The actual displayed value is rendered directly inside SelectValue by shadcn/ui */}
-                          {order.paymentStatus}
-                        </SelectValue>
-                        {isUpdatingPaymentStatus && (
-                          // Position spinner at the end, outside of SelectValue, but still within SelectTrigger
-                          <LoadingSpinner className="h-3 w-3 text-current ml-2" />
-                        )}
+                        <div className="flex items-center justify-center w-full">
+                          <SelectValue placeholder="Select Status" />
+                          {isUpdatingPaymentStatus && (
+                            <LoadingSpinner className="h-4 w-4 text-current ml-2" />
+                          )}
+                        </div>
                       </SelectTrigger>
                       <SelectContent
-                        position="popper" // ADD THIS PROP TO KEEP DROPDOWN FROM SCROLLING
+                        position="popper"
                         className="rounded-lg shadow-lg bg-popover"
                       >
                         {paymentStatusOptions.map((status) => (
@@ -929,8 +862,7 @@ const OrderDetailsPage = () => {
                                         )
                                       }
                                       disabled={
-                                        loadingRelatedDetails ||
-                                        !item.variantId
+                                        loadingRelatedDetails || !item.variantId
                                       }
                                     >
                                       <Eye className="h-4 w-4 mr-1" /> Variant

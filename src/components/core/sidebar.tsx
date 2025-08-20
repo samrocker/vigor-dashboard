@@ -241,7 +241,7 @@ const MiniSidebar = ({ toggleSidebar }: SidebarProps) => {
     <div className="hidden sm:flex flex-col items-center py-6 px-3 bg-background border-r rounded-r-3xl shadow-lg flex-shrink-0 w-20 transition-all duration-300 h-screen">
       <div className="flex flex-col items-center space-y-4 mb-8">
         <div
-          className="p-2 rounded-lg hover:bg-primary cursor-pointer"
+          className="p-2 rounded-lg hover:bg-primary hover:text-primary-foreground cursor-pointer"
           onClick={toggleSidebar}
         >
           <MenuIcon />

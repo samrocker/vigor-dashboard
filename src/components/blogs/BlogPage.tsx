@@ -115,7 +115,8 @@ const BlogDetailPage = () => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Thumbnail states
-  const [selectedThumbnailFile, setSelectedThumbnailFile] = useState<File | null>(null);
+  const [selectedThumbnailFile, setSelectedThumbnailFile] =
+    useState<File | null>(null);
   const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
   const [isRemovingThumbnail, setIsRemovingThumbnail] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -201,7 +202,9 @@ const BlogDetailPage = () => {
         toast.error(response.data.message || "Failed to update blog content.");
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Error updating blog content.");
+      toast.error(
+        err.response?.data?.message || "Error updating blog content."
+      );
       console.error("Update blog content error:", err);
     } finally {
       setIsUpdatingMainContent(false);
@@ -230,7 +233,9 @@ const BlogDetailPage = () => {
           toast.info("Old thumbnail removed, uploading new one...");
         } catch (deleteError) {
           console.error("Failed to delete old thumbnail:", deleteError);
-          toast.warning("Could not remove old thumbnail. Proceeding with upload.");
+          toast.warning(
+            "Could not remove old thumbnail. Proceeding with upload."
+          );
         }
       }
 
@@ -249,9 +254,13 @@ const BlogDetailPage = () => {
       }
     } catch (err: any) {
       if (err.response && err.response.status === 413) {
-        toast.error("Thumbnail image too large. Please upload an image smaller than 5MB.");
+        toast.error(
+          "Thumbnail image too large. Please upload an image smaller than 5MB."
+        );
       } else {
-        toast.error(err.response?.data?.message || "Error uploading thumbnail.");
+        toast.error(
+          err.response?.data?.message || "Error uploading thumbnail."
+        );
       }
       console.error("Upload thumbnail error:", err);
     } finally {
@@ -260,7 +269,9 @@ const BlogDetailPage = () => {
   };
 
   // This handler now directly triggers the upload
-  const handleThumbnailFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleThumbnailFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedThumbnailFile(file); // Set for preview immediately
@@ -272,33 +283,43 @@ const BlogDetailPage = () => {
 
   const handleRemoveThumbnail = async () => {
     if (!blog?.image?.id) {
-        // If there's no actual uploaded image but a selected file, just clear the selected file.
-        if (selectedThumbnailFile) {
-            setSelectedThumbnailFile(null);
-            toast.info("Selected thumbnail preview cleared.");
-        }
-        return;
+      // If there's no actual uploaded image but a selected file, just clear the selected file.
+      if (selectedThumbnailFile) {
+        setSelectedThumbnailFile(null);
+        toast.info("Selected thumbnail preview cleared.");
+      }
+      return;
     }
 
     setIsRemovingThumbnail(true);
     try {
-      const response = await axiosInstance.delete(`/admin/image/${blog.image.id}`);
+      const response = await axiosInstance.delete(
+        `/admin/image/${blog.image.id}`
+      );
       if (response.data.status === "success") {
         toast.success("Thumbnail image removed successfully!");
         fetchBlogDetails(); // Re-fetch blog details to reflect removal
       } else {
-        toast.error(response.data.message || "Failed to remove thumbnail image.");
+        toast.error(
+          response.data.message || "Failed to remove thumbnail image."
+        );
       }
     } catch (err: any) {
       console.error("Error removing thumbnail:", err);
-      toast.error(err.response?.data?.message || "Error removing thumbnail image.");
+      toast.error(
+        err.response?.data?.message || "Error removing thumbnail image."
+      );
     } finally {
       setIsRemovingThumbnail(false);
     }
   };
 
-  const isAnyActionInProgress = loading || isUpdatingMainContent || isUploadingThumbnail || isRemovingThumbnail || isDeleting;
-
+  const isAnyActionInProgress =
+    loading ||
+    isUpdatingMainContent ||
+    isUploadingThumbnail ||
+    isRemovingThumbnail ||
+    isDeleting;
 
   // --- Delete Blog Handlers ---
   const handleOpenDeleteDialog = () => {
@@ -329,7 +350,9 @@ const BlogDetailPage = () => {
     }
   };
 
-  const currentDisplayedImageUrl = selectedThumbnailFile ? URL.createObjectURL(selectedThumbnailFile) : blog?.image?.url;
+  const currentDisplayedImageUrl = selectedThumbnailFile
+    ? URL.createObjectURL(selectedThumbnailFile)
+    : blog?.image?.url;
 
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8 flex flex-col items-center">
@@ -451,111 +474,119 @@ const BlogDetailPage = () => {
         </motion.div>
       ) : (
         <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1, duration: 0.5 }}
-            className="w-full max-w-4xl shadow-lg p-6 rounded-lg bg-card text-card-foreground mx-auto"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, duration: 0.5 }}
+          className="w-full max-w-4xl shadow-lg p-6 rounded-lg bg-card text-card-foreground mx-auto"
         >
-            <div className="mb-6 relative group">
-              {currentDisplayedImageUrl ? (
-                <img
-                  src={currentDisplayedImageUrl}
-                  alt={blog.data.title || "Blog thumbnail"}
-                  className="w-full h-[500px] object-cover rounded-lg shadow-md"
-                />
-              ) : (
-                <div className="w-full h-[300px] flex items-center justify-center rounded-lg bg-muted border border-dashed border-muted-foreground/50">
-                  <ImageIcon className="h-24 w-24 text-muted-foreground/30" />
-                </div>
-              )}
-
-              {/* Overlay for image actions */}
-              <div
-                className={`absolute inset-0 bg-black bg-opacity-60 rounded-lg
-                  flex flex-col items-center justify-center text-white
-                  ${isAnyActionInProgress ? 'opacity-100 cursor-not-allowed' : 'opacity-0 group-hover:opacity-100'}
-                  transition-opacity duration-300`}
-              >
-                {/* Display spinner or message if any image action is in progress */}
-                {isUploadingThumbnail || isRemovingThumbnail ? (
-                  <div className="flex flex-col items-center">
-                    <LoadingSpinner className="h-8 w-8 text-white" />
-                    <p className="mt-2 text-sm">{isUploadingThumbnail ? "Uploading..." : "Removing..."}</p>
-                  </div>
-                ) : (
-                  <>
-                    <Label
-                      htmlFor="mainThumbnailFileInput"
-                      className="cursor-pointer bg-primary hover:bg-primary-dark text-white py-2 px-4 rounded-md text-sm font-medium transition-colors mb-2"
-                    >
-                      <UploadCloud className="h-4 w-4 inline mr-2" /> Change Thumbnail
-                      <Input
-                        id="mainThumbnailFileInput"
-                        type="file"
-                        accept="image/*"
-                        onChange={handleThumbnailFileChange} // This now directly triggers upload
-                        className="hidden"
-                        disabled={isAnyActionInProgress}
-                        ref={fileInputRef}
-                        // Important: Clear the input value after selection to allow re-uploading the same file
-                        // or to ensure onChange fires even if the same file is picked after cancellation.
-                        onClick={(e) => { e.currentTarget.value = ''; }}
-                      />
-                    </Label>
-
-                    {/* The "Save New Thumbnail" button is removed */}
-
-                    {blog.image?.id && ( // Only show remove button if there's an actual image on the server
-                      <Button
-                        variant="destructive"
-                        onClick={handleRemoveThumbnail}
-                        disabled={isAnyActionInProgress}
-                        size="sm"
-                      >
-                        <Trash2 className="h-4 w-4 inline mr-2" /> Remove Current Thumbnail
-                      </Button>
-                    )}
-
-                    {/* The "Clear Selection" button is still useful if a user picks a file then changes their mind BEFORE upload finishes */}
-                    {selectedThumbnailFile && !blog.image?.id && (
-                        <Button
-                            variant="outline"
-                            onClick={() => setSelectedThumbnailFile(null)}
-                            disabled={isAnyActionInProgress}
-                            size="sm"
-                            className="mt-2 bg-transparent text-white hover:bg-white/20"
-                        >
-                            <XCircle className="h-4 w-4 mr-2" /> Clear Selection
-                        </Button>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-
-            <CardHeader className="px-0 pt-0 pb-4">
-              <CardTitle className="text-4xl font-extrabold text-foreground mb-2 leading-tight">
-                {blog.data.title}
-              </CardTitle>
-              <CardDescription className="text-lg text-muted-foreground">
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-4 w-4 text-primary" />{" "}
-                    {formatDate(blog.createdAt)}
-                  </span>
-                </div>
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="px-0 py-4 border-t border-b border-border">
-              <div
-                className="prose prose-lg dark:prose-invert max-w-none"
-                dangerouslySetInnerHTML={{ __html: sanitizedContent }}
+          <div className="mb-6 relative group">
+            {currentDisplayedImageUrl ? (
+              <img
+                src={currentDisplayedImageUrl}
+                alt={blog.data.title || "Blog thumbnail"}
+                className="w-full h-[500px] object-cover rounded-lg shadow-md"
               />
-            </CardContent>
+            ) : (
+              <div className="w-full h-[300px] flex items-center justify-center rounded-lg bg-muted border border-dashed border-muted-foreground/50">
+                <ImageIcon className="h-24 w-24 text-muted-foreground/30" />
+              </div>
+            )}
 
-            <div className="mt-8 text-sm text-muted-foreground text-center">
-              Last updated: {formatDate(blog.updatedAt)}
+            {/* Overlay for image actions */}
+            <div
+              className={`absolute inset-0 bg-black bg-opacity-60 rounded-lg
+                  flex flex-col items-center justify-center text-white
+                  ${
+                    isAnyActionInProgress
+                      ? "opacity-100 cursor-not-allowed"
+                      : "opacity-0 group-hover:opacity-100"
+                  }
+                  transition-opacity duration-300`}
+            >
+              {/* Display spinner or message if any image action is in progress */}
+              {isUploadingThumbnail || isRemovingThumbnail ? (
+                <div className="flex flex-col items-center">
+                  <LoadingSpinner className="h-8 w-8 text-white" />
+                  <p className="mt-2 text-sm">
+                    {isUploadingThumbnail ? "Uploading..." : "Removing..."}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <Label
+                    htmlFor="mainThumbnailFileInput"
+                    className="cursor-pointer bg-primary hover:bg-primary-dark text-white py-2 px-4 rounded-md text-sm font-medium transition-colors mb-2"
+                  >
+                    <UploadCloud className="h-4 w-4 inline mr-2" />{" "}
+                    {blog.image?.id ? "Change Thumbnail" : "Upload"}
+                    <Input
+                      id="mainThumbnailFileInput"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleThumbnailFileChange}
+                      className="hidden"
+                      disabled={isAnyActionInProgress}
+                      ref={fileInputRef}
+                      onClick={(e) => {
+                        e.currentTarget.value = "";
+                      }}
+                    />
+                  </Label>
+
+                  {/* The "Save New Thumbnail" button is removed */}
+
+                  {blog.image?.id && ( // Only show remove button if there's an actual image on the server
+                    <Button
+                      variant="destructive"
+                      onClick={handleRemoveThumbnail}
+                      disabled={isAnyActionInProgress}
+                      size="sm"
+                    >
+                      <Trash2 className="h-4 w-4 inline mr-2" /> Remove Current
+                      Thumbnail
+                    </Button>
+                  )}
+
+                  {/* The "Clear Selection" button is still useful if a user picks a file then changes their mind BEFORE upload finishes */}
+                  {selectedThumbnailFile && !blog.image?.id && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setSelectedThumbnailFile(null)}
+                      disabled={isAnyActionInProgress}
+                      size="sm"
+                      className="mt-2 bg-transparent text-white hover:bg-white/20"
+                    >
+                      <XCircle className="h-4 w-4 mr-2" /> Clear Selection
+                    </Button>
+                  )}
+                </>
+              )}
             </div>
+          </div>
+
+          <CardHeader className="px-0 pt-0 pb-4">
+            <CardTitle className="text-4xl font-extrabold text-foreground mb-2 leading-tight">
+              {blog.data.title}
+            </CardTitle>
+            <CardDescription className="text-lg text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-4 w-4 text-primary" />{" "}
+                  {formatDate(blog.createdAt)}
+                </span>
+              </div>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-0 py-4 border-t border-b border-border">
+            <div
+              className="prose prose-lg dark:prose-invert max-w-none"
+              dangerouslySetInnerHTML={{ __html: sanitizedContent }}
+            />
+          </CardContent>
+
+          <div className="mt-8 text-sm text-muted-foreground text-center">
+            Last updated: {formatDate(blog.updatedAt)}
+          </div>
         </motion.div>
       )}
 
@@ -569,7 +600,10 @@ const BlogDetailPage = () => {
                 Make changes to the blog post's title and main content here.
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleUpdateBlogContent} className="grid gap-6 py-4">
+            <form
+              onSubmit={handleUpdateBlogContent}
+              className="grid gap-6 py-4"
+            >
               <div className="grid grid-cols-1 items-center gap-2">
                 <Label
                   htmlFor="updatedBlogTitle"

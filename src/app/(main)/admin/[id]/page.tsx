@@ -231,7 +231,7 @@ const AdminDetailPage = () => {
                 disabled={loading} // Disable if overall page is still loading
               >
                 <Edit className="h-4 w-4 mr-2" />
-                Edit Admin
+                Edit {admin?.role} ADMIN
               </Button>
               {/* Only show delete button if admin exists and is not a SUPER admin */}
               {admin && admin.role !== "SUPER" && (
@@ -243,7 +243,7 @@ const AdminDetailPage = () => {
                   disabled={loading} // Disable if overall page is still loading
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Admin
+                  Delete {admin.role} Admin
                 </Button>
               )}
               <Button
@@ -296,7 +296,7 @@ const AdminDetailPage = () => {
                 <p className="text-muted-foreground">Role:</p>
                 <span className="font-medium text-foreground">
                   <Shield className="h-4 w-4 inline mr-1 text-muted-foreground" />
-                  {admin?.role || <Skeleton className="h-4 w-20" />}
+                  {admin?.role} ADMIN
                 </span>
               </div>
               <div>
@@ -322,7 +322,7 @@ const AdminDetailPage = () => {
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Edit Admin</DialogTitle>
+            <DialogTitle>Edit {admin?.role} ADMIN</DialogTitle>
             <DialogDescription>Edit the details of the admin.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">

@@ -77,6 +77,8 @@ const AllCategoryPage = () => {
   const [createForm, setCreateForm] = useState({ name: "", description: "" });
   const [isCreating, setIsCreating] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  // NEW: State for the category image file
+  const [createImageFile, setCreateImageFile] = useState<File | null>(null);
 
   // State for update form
   const [updateForm, setUpdateForm] = useState({
@@ -102,6 +104,13 @@ const AllCategoryPage = () => {
     "createdAt"
   ); // For sort dropdown
 
+  const [createFormErrors, setCreateFormErrors] = useState<{ name?: string }>(
+    {}
+  );
+  const [updateFormErrors, setUpdateFormErrors] = useState<{ name?: string }>(
+    {}
+  );
+
   // Initialize useRouter for navigation
   const router = useRouter();
 
@@ -109,6 +118,16 @@ const AllCategoryPage = () => {
   useEffect(() => {
     fetchCategoriesData();
   }, []);
+
+  function validateCategoryForm(name: string) {
+    const errors: { name?: string } = {};
+    if (!name.trim()) errors.name = "Name is required";
+    else if (name.trim().length < 2)
+      errors.name = "Name must be at least 2 characters";
+    else if (name.trim().length > 100)
+      errors.name = "Name must be at most 100 characters";
+    return errors;
+  }
 
   // Function to fetch categories data from the API
   const fetchCategoriesData = async () => {
@@ -179,33 +198,74 @@ const AllCategoryPage = () => {
     return currentCategories;
   }, [categories, searchQuery, sortKey, sortDirection]); // Dependencies for memoization
 
-  // Handler for creating a new category
+  // MODIFIED: Handler for creating a new category and uploading an image
   const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault(); // Prevent default form submission
-    if (!createForm.name.trim()) {
-      toast.error("Name is required"); // Show error toast if name is empty
+    e.preventDefault();
+    setCreateFormErrors({});
+    const errors = validateCategoryForm(createForm.name);
+    if (Object.keys(errors).length > 0) {
+      setCreateFormErrors(errors);
       return;
     }
-    setIsCreating(true); // Set creating state
+    setIsCreating(true);
     try {
-      const response = await axiosInstance.post("/admin/category", {
-        name: createForm.name,
-        description: createForm.description,
-      });
+      // Step 1: Create the category
+      const response = await axiosInstance.post("/admin/category", createForm);
+
       if (response.data.status === "success" && response.data.data) {
-        setCreateForm({ name: "", description: "" }); // Clear form fields
-        toast.success("Category created successfully"); // Show success toast
-        setIsCreateDialogOpen(false); // Close dialog
-        fetchCategoriesData(); // Refresh category list
+        const newCategory = response.data.data.category;
+
+        // Step 2: Upload the image if one is selected
+        if (createImageFile) {
+          const formData = new FormData();
+          formData.append("image", createImageFile);
+          // Using 'productId' as the key, as specified in the form-data screenshot
+          formData.append("categoryId", newCategory.id);
+
+          try {
+            const imageResponse = await axiosInstance.post(
+              "/admin/image",
+              formData,
+              {
+                headers: {
+                  "Content-Type": "multipart/form-data",
+                },
+              }
+            );
+            if (imageResponse.data.status === "success") {
+            } else {
+              toast.error(
+                imageResponse.data.message || "Failed to upload image"
+              );
+            }
+          } catch (imgErr: any) {
+            toast.error(
+              imgErr?.response?.data?.message ||
+                "Category was created, but image upload failed."
+            );
+          }
+        }
+
+        // Step 3: Reset state and refetch data
+        setCreateForm({ name: "", description: "" });
+        setCreateImageFile(null); // Reset image file state
+        setIsCreateDialogOpen(false);
+        fetchCategoriesData(); // Refresh the list
       } else {
-        toast.error(response.data.message || "Failed to create category"); // Show error toast
+        toast.error(response.data.message || "Failed to create category");
       }
     } catch (err: any) {
-      toast.error(
-        err.message || "An unexpected error occurred while creating category."
-      ); // Show unexpected error toast
+      let apiMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Something went wrong. Please try again.";
+      if (apiMessage.toLowerCase().includes("duplicate")) {
+        apiMessage = "A category with this name already exists.";
+      }
+      toast.error(apiMessage);
     } finally {
-      setIsCreating(false); // Reset creating state
+      setIsCreating(false);
     }
   };
 
@@ -221,12 +281,14 @@ const AllCategoryPage = () => {
 
   // Handler for updating an existing category
   const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault(); // Prevent default form submission
-    if (!updateForm.name.trim()) {
-      toast.error("Name is required"); // Show error toast if name is empty
+    e.preventDefault();
+    setUpdateFormErrors({});
+    const errors = validateCategoryForm(updateForm.name);
+    if (Object.keys(errors).length > 0) {
+      setUpdateFormErrors(errors);
       return;
     }
-    setIsUpdating(true); // Set updating state
+    setIsUpdating(true);
     try {
       const response = await axiosInstance.patch(
         `/admin/category/${updateForm.id}`,
@@ -236,7 +298,6 @@ const AllCategoryPage = () => {
         }
       );
       if (response.data.status === "success") {
-        // Update the category in the local state
         setCategories(
           categories.map((cat) =>
             cat.id === updateForm.id
@@ -248,17 +309,23 @@ const AllCategoryPage = () => {
               : cat
           )
         );
-        setIsUpdateDialogOpen(false); // Close dialog
-        toast.success("Category updated successfully"); // Show success toast
+        setIsUpdateDialogOpen(false);
+        toast.success("Category updated successfully");
       } else {
-        toast.error(response.data.message || "Failed to update category"); // Show error toast
+        toast.error(response.data.message || "Failed to update category");
       }
     } catch (err: any) {
-      toast.error(
-        err.message || "An unexpected error occurred while updating category."
-      ); // Show unexpected error toast
+      let apiMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Something went wrong. Please try again.";
+      if (apiMessage.toLowerCase().includes("duplicate")) {
+        apiMessage = "A category with this name already exists.";
+      }
+      toast.error(apiMessage);
     } finally {
-      setIsUpdating(false); // Reset updating state
+      setIsUpdating(false);
     }
   };
 
@@ -386,6 +453,29 @@ const AllCategoryPage = () => {
                       maxLength={100} // Added max length for category name
                     />
                   </div>
+                  {/* NEW: File input for category image */}
+                  <div>
+                    <label
+                      htmlFor="createImage"
+                      className="block text-sm font-medium text-foreground mb-1"
+                    >
+                      Image (Optional)
+                    </label>
+                    <Input
+                      id="createImage"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files.length > 0) {
+                          setCreateImageFile(e.target.files[0]);
+                        } else {
+                          setCreateImageFile(null);
+                        }
+                      }}
+                      disabled={isCreating || loading}
+                      className="h-fit file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                    />
+                  </div>
                   <div>
                     <label
                       htmlFor="createDescription"
@@ -407,6 +497,11 @@ const AllCategoryPage = () => {
                       rows={3}
                       maxLength={500} // Added max length for description
                     />
+                    {createFormErrors.name && (
+                      <span className="text-destructive text-xs mt-1 block">
+                        {createFormErrors.name}
+                      </span>
+                    )}
                   </div>
                   <DialogFooter className="flex flex-col sm:flex-row justify-end gap-3">
                     <Button
@@ -653,7 +748,7 @@ const AllCategoryPage = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => handleViewDetails(category.id)}
-                              className="hover:bg-primary hover:text-primary-foreground"
+                              className="hover:text-primary hover:bg-primary/10 border-border"
                             >
                               <Eye className="h-4 w-4 mr-1" />
                               View
@@ -662,7 +757,7 @@ const AllCategoryPage = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => openUpdateDialog(category)}
-                              className="hover:bg-primary hover:text-primary-foreground"
+                              className="hover:text-primary hover:bg-primary/10 border-border"
                               disabled={loading}
                             >
                               <Edit className="h-4 w-4 mr-1" />
@@ -744,6 +839,11 @@ const AllCategoryPage = () => {
                 rows={3}
                 maxLength={500} // Added max length for description
               />
+              {updateFormErrors.name && (
+                <span className="text-destructive text-xs mt-1 block">
+                  {updateFormErrors.name}
+                </span>
+              )}
             </div>
             <DialogFooter className="flex flex-col sm:flex-row justify-end gap-3">
               <Button

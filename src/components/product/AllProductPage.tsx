@@ -5,21 +5,22 @@ import { useRouter } from "next/navigation";
 import {
   Search,
   RefreshCw,
-  Package, // Icon for products
-  DollarSign, // For price
-  Boxes, // For stock
+  Package,
+  DollarSign,
+  Boxes,
   Calendar,
   Filter,
   ArrowUp,
   ArrowDown,
-  Eye, // For 'View Product Details'
-  Info, // For error/empty state (remains for "No products found" scenario)
-  Plus, // For Add Product
-  Edit, // For Edit Product
-  Trash2, // For Delete Product
-  CheckCircle, // For COD status
-  XCircle, // For COD status
-  X, // For removing additional detail fields
+  Eye,
+  Info,
+  Plus,
+  Edit,
+  Trash2,
+  CheckCircle,
+  XCircle,
+  X,
+  UploadCloud, // Added for image upload UI
 } from "lucide-react";
 import { getAccessToken } from "@/lib/auth";
 import { ApiResponse, axiosInstance } from "@/lib/axios";
@@ -61,18 +62,17 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Skeleton } from "@/components/ui/skeleton"; // Added Skeleton import
-import { motion } from "framer-motion"; // Added motion import
+import { Skeleton } from "@/components/ui/skeleton";
+import { motion } from "framer-motion";
 
 // --- Type Definitions ---
 
 interface AdditionalDetails {
-  [key: string]: string; // Changed to string as values will be input as strings
+  [key: string]: string;
 }
 
-// Interface for dynamic key-value pairs in forms
 interface KeyValuePair {
-  id: string; // Unique ID for React list key
+  id: string;
   key: string;
   value: string;
 }
@@ -82,7 +82,6 @@ interface CartItem {
   productId: string;
   quantity: number;
   price: number;
-  // ... other fields if needed
 }
 
 interface OrderItem {
@@ -90,54 +89,46 @@ interface OrderItem {
   productId: string;
   quantity: number;
   price: number;
-  // ... other fields if needed
 }
 
 interface ProductImage {
   id: string;
   url: string;
-  // ... other fields if needed
 }
 
 interface ProductReview {
   id: string;
   rating: number;
   comment: string | null;
-  // ... other fields if needed
 }
 
 interface ProductVariant {
   id: string;
   name: string;
-  value: { [key: string]: string }; // e.g., { color: "black", size: "M" }
+  value: { [key: string]: string };
   price: number;
   stock: number;
-  // ... other fields if needed
 }
 
-// Main Product interface
 export interface Product {
   id: string;
   name: string;
   description: string | null;
-  additionalDetails?: AdditionalDetails; // Optional, as per API response
+  additionalDetails?: AdditionalDetails;
   price: number;
   COD: boolean;
   stock: number;
   createdAt: string;
   updatedAt: string;
-  subCategoryId: string | null; // Can be null if product is not in a subcategory
-  // Relations - these are included in the API response when includeRelations=true
+  subCategoryId: string | null;
   cartItems?: CartItem[];
   orderItems?: OrderItem[];
   images?: ProductImage[];
   reviews?: ProductReview[];
   variants?: ProductVariant[];
   subCategory?: {
-    // Nested subCategory object
     id: string;
     name: string;
-    // ... other subCategory fields if needed for display
   };
 }
 
@@ -153,11 +144,28 @@ export interface ProductsApiResponse extends ApiResponse {
   data: ProductsData;
 }
 
-// For subcategory filter dropdown options
 interface SubCategoryOption {
   id: string;
   name: string;
 }
+
+interface FormErrors {
+  name?: string;
+  description?: string;
+  price?: string;
+  stock?: string;
+  additionalDetails?: string;
+  general?: string;
+}
+
+const initialFormErrors: FormErrors = {
+  name: "",
+  description: "",
+  price: "",
+  stock: "",
+  additionalDetails: "",
+  general: "",
+};
 
 // --- Utility Functions ---
 function formatCurrency(amount: number) {
@@ -184,12 +192,10 @@ function formatDate(dateString: string | null) {
 const AllProductPage = () => {
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  // Removed error state: const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalProductsCount, setTotalProductsCount] = useState(0);
 
-  // Filter states
   const [searchQuery, setSearchQuery] = useState("");
   const [subCategoryFilterId, setSubCategoryFilterId] = useState<
     string | "all"
@@ -197,13 +203,11 @@ const AllProductPage = () => {
   const [codFilter, setCodFilter] = useState<"all" | "true" | "false">("all");
   const [subCategoriesOptions, setSubCategoriesOptions] = useState<
     SubCategoryOption[]
-  >([]); // For subcategory filter dropdown
+  >([]);
 
-  // Sorting states
   const [sortKey, setSortKey] = useState<keyof Product | null>("createdAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
-  // CRUD operation states
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
     name: "",
@@ -214,7 +218,10 @@ const AllProductPage = () => {
     subCategoryId: null as string | null,
     additionalDetails: [] as KeyValuePair[],
   });
+  const [createFormImages, setCreateFormImages] = useState<File[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [createFormErrors, setCreateFormErrors] =
+    useState<FormErrors>(initialFormErrors);
 
   const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
   const [updateForm, setUpdateForm] = useState({
@@ -228,6 +235,8 @@ const AllProductPage = () => {
     additionalDetails: [] as KeyValuePair[],
   });
   const [isUpdating, setIsUpdating] = useState(false);
+  const [updateFormErrors, setUpdateFormErrors] =
+    useState<FormErrors>(initialFormErrors);
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [productToDeleteId, setProductToDeleteId] = useState<string | null>(
@@ -235,23 +244,24 @@ const AllProductPage = () => {
   );
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const token = getAccessToken(); // Assuming you'll use this for auth
+  const token = getAccessToken();
   const router = useRouter();
 
   const fetchAllProducts = useCallback(async () => {
     setLoading(true);
     try {
-      // Include relations to get subCategory name directly
       const response = await axiosInstance.get<ProductsApiResponse>(
         "/public/product?includeRelations=true"
       );
       const data = response.data.data;
       setAllProducts(data?.products || []);
       setTotalProductsCount(data?.total || 0);
-      // Removed setError(null);
     } catch (err: any) {
       setAllProducts([]);
-      toast.error(err.message || "Failed to fetch products. Please try again."); // Display toast error
+      toast.error(
+        err.response?.data?.message ||
+          "Failed to fetch products. Please try again."
+      );
       console.error("Fetch products error:", err);
     } finally {
       setLoading(false);
@@ -268,7 +278,7 @@ const AllProductPage = () => {
       }
     } catch (err) {
       console.error("Failed to fetch subcategories for form:", err);
-      toast.error("Failed to load subcategories for product forms."); // Display toast error
+      toast.error("Failed to load subcategories for product forms.");
     }
   }, []);
 
@@ -281,11 +291,9 @@ const AllProductPage = () => {
     fetchSubCategoriesForForm();
   }, [token, router, fetchAllProducts, fetchSubCategoriesForForm]);
 
-  // Memoized filtered and paginated products
   const filteredAndPaginatedProducts = useMemo(() => {
     let currentProducts = [...allProducts];
 
-    // 1. Apply Search Filter
     if (searchQuery) {
       currentProducts = currentProducts.filter(
         (product) =>
@@ -297,14 +305,12 @@ const AllProductPage = () => {
       );
     }
 
-    // 2. Apply SubCategory Filter
     if (subCategoryFilterId !== "all") {
       currentProducts = currentProducts.filter(
         (product) => product.subCategoryId === subCategoryFilterId
       );
     }
 
-    // 3. Apply COD Filter
     if (codFilter !== "all") {
       const isCOD = codFilter === "true";
       currentProducts = currentProducts.filter(
@@ -312,7 +318,6 @@ const AllProductPage = () => {
       );
     }
 
-    // 4. Apply Sorting
     if (sortKey) {
       currentProducts.sort((a, b) => {
         const aValue = a[sortKey];
@@ -340,7 +345,6 @@ const AllProductPage = () => {
       });
     }
 
-    // 5. Apply Pagination (assuming a fixed items per page for simplicity)
     const productsPerPage = 10;
     const newTotalPages = Math.ceil(currentProducts.length / productsPerPage);
     setTotalPages(newTotalPages > 0 ? newTotalPages : 1);
@@ -357,27 +361,27 @@ const AllProductPage = () => {
     sortKey,
     sortDirection,
     currentPage,
-  ]); // Dependencies for memoization
+  ]);
 
   // --- Handlers ---
   const handleRefresh = () => {
     fetchAllProducts();
-    fetchSubCategoriesForForm(); // Refresh subcategories as well
+    fetchSubCategoriesForForm();
   };
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
-    setCurrentPage(1); // Reset pagination on search
+    setCurrentPage(1);
   };
 
   const handleSubCategoryFilterChange = (value: string | "all") => {
     setSubCategoryFilterId(value);
-    setCurrentPage(1); // Reset pagination on filter change
+    setCurrentPage(1);
   };
 
   const handleCodFilterChange = (value: "all" | "true" | "false") => {
     setCodFilter(value);
-    setCurrentPage(1); // Reset pagination on filter change
+    setCurrentPage(1);
   };
 
   const handleSort = (key: keyof Product) => {
@@ -399,10 +403,9 @@ const AllProductPage = () => {
   };
 
   const handleViewDetails = (productId: string) => {
-    router.push(`/product/${productId}`); // Assuming product details page path
+    router.push(`/product/${productId}`);
   };
 
-  // --- Additional Details Handlers ---
   const handleAddAdditionalDetailField = (formType: "create" | "update") => {
     const newField = { id: crypto.randomUUID(), key: "", value: "" };
     if (formType === "create") {
@@ -462,73 +465,93 @@ const AllProductPage = () => {
     }
   };
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      setCreateFormImages((prevImages) => [...prevImages, ...newFiles]);
+      e.target.value = "";
+    }
+  };
+
+  const handleRemoveImage = (indexToRemove: number) => {
+    setCreateFormImages((prevImages) =>
+      prevImages.filter((_, index) => index !== indexToRemove)
+    );
+  };
+
+  const validateForm = (
+    form: typeof createForm | typeof updateForm
+  ): { errors: FormErrors; isValid: boolean } => {
+    const errors: FormErrors = {};
+    let isValid = true;
+
+    if (!form.name.trim()) {
+      errors.name = "Product Name is required.";
+      isValid = false;
+    }
+    if (!form.description.trim()) {
+      errors.description = "Description is required.";
+      isValid = false;
+    }
+    if (Number(form.price) <= 0) {
+      errors.price = "Price must be greater than 0.";
+      isValid = false;
+    }
+    if (Number(form.stock) < 0 || !Number.isInteger(Number(form.stock))) {
+      errors.stock = "Stock must be a non-negative integer.";
+      isValid = false;
+    }
+
+    const filledDetails = form.additionalDetails.filter(
+      (d) => d.key.trim() && d.value.trim()
+    );
+
+    if (filledDetails.length === 0) {
+      errors.additionalDetails = "At least one additional detail is required.";
+      isValid = false;
+    } else {
+      if (filledDetails.length !== form.additionalDetails.length) {
+        errors.additionalDetails =
+          "All detail fields must have both a key and a value.";
+        isValid = false;
+      }
+    }
+
+    return { errors, isValid };
+  };
+
   // --- CRUD Handlers ---
 
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    setCreateFormErrors(initialFormErrors);
+
+    const { errors, isValid } = validateForm(createForm);
+    if (!isValid) {
+      setCreateFormErrors(errors);
+      toast.error("Please correct the errors in the form.");
+      return;
+    }
+
     setIsCreating(true);
-    // Removed setError(null);
-
-    // Validate required fields
-    if (!createForm.name.trim()) {
-      toast.error("Product Name is required.");
-      setIsCreating(false);
-      return;
-    }
-    if (!createForm.description.trim()) {
-      toast.error("Description is required.");
-      setIsCreating(false);
-      return;
-    }
-    if (createForm.price <= 0) {
-      toast.error("Price must be greater than 0.");
-      setIsCreating(false);
-      return;
-    }
-    if (createForm.stock < 0) {
-      toast.error("Stock cannot be negative.");
-      setIsCreating(false);
-      return;
-    }
-
-    // Additional Details are now always optional, but if added, keys/values must be non-empty
-    for (const detail of createForm.additionalDetails) {
-      if (
-        (detail.key.trim() && !detail.value.trim()) ||
-        (!detail.key.trim() && detail.value.trim())
-      ) {
-        toast.error(
-          "Additional Detail fields must have both a key and a value, or be completely empty."
-        );
-        setIsCreating(false);
-        return;
-      }
-    }
 
     try {
-      // Build additionalDetails object, omitting empty keys
       const additionalDetailsObject: AdditionalDetails = {};
       createForm.additionalDetails.forEach((detail) => {
-        if (detail.key.trim()) {
-          // Only add if key is not empty
+        if (detail.key.trim() && detail.value.trim()) {
           additionalDetailsObject[detail.key.trim()] = detail.value.trim();
         }
       });
 
-      // Construct payload, conditionally adding fields
       const payload: { [key: string]: any } = {
         name: createForm.name.trim(),
+        description: createForm.description.trim(),
         price: Number(createForm.price),
         stock: Number(createForm.stock),
         COD: Boolean(createForm.COD),
+        additionalDetails: additionalDetailsObject,
       };
 
-      // Conditionally add description
-      if (createForm.description.trim()) {
-        payload.description = createForm.description.trim();
-      }
-
-      // Conditionally add subCategoryId
       if (
         createForm.subCategoryId !== null &&
         createForm.subCategoryId !== "none"
@@ -536,45 +559,63 @@ const AllProductPage = () => {
         payload.subCategoryId = createForm.subCategoryId;
       }
 
-      // Conditionally add additionalDetails
-      if (Object.keys(additionalDetailsObject).length > 0) {
-        payload.additionalDetails = additionalDetailsObject;
-      }
-
       const response = await axiosInstance.post("/admin/product", payload);
 
-      if (response.data.status === "success") {
+      if (response.data.status === "success" && response.data.data.product) {
+        const createdProduct = response.data.data.product;
         toast.success("Product created successfully!");
+
+        if (createFormImages.length > 0) {
+          const formData = new FormData();
+          formData.append("productId", createdProduct.id);
+          createFormImages.forEach((imageFile) => {
+            formData.append("images", imageFile);
+          });
+
+          try {
+            toast.info("Uploading product images...");
+            await axiosInstance.post("/admin/image/multiple", formData, {
+              headers: { "Content-Type": "multipart/form-data" },
+            });
+            toast.success("Images uploaded successfully!");
+          } catch (imgErr: any) {
+            console.error("Image upload failed:", imgErr);
+            toast.error(
+              `Product created, but failed to upload images: ${
+                imgErr.response?.data?.message || "Please try again later."
+              }`
+            );
+          }
+        }
+
         setIsCreateDialogOpen(false);
-        setCreateForm({
-          name: "",
-          description: "",
-          price: 0,
-          stock: 0,
-          COD: false,
-          subCategoryId: null,
-          additionalDetails: [], // Reset to empty array
-          // Removed areAdditionalDetailsRequired
-        });
-        fetchAllProducts(); // Refresh list
+        fetchAllProducts();
       } else {
         toast.error(response.data.message || "Failed to create product.");
       }
     } catch (err: any) {
-      // Removed setError(err.message || "An unexpected error occurred during creation.");
-      toast.error(err.response?.data?.message || "Error creating product.");
+      const apiError = err.response?.data;
+      if (apiError && apiError.errors) {
+        setCreateFormErrors((prev) => ({ ...prev, ...apiError.errors }));
+        toast.error(
+          apiError.message || "Server validation failed. Please check the form."
+        );
+      } else {
+        toast.error(
+          apiError?.message || "An unexpected error occurred. Please try again."
+        );
+      }
     } finally {
       setIsCreating(false);
     }
   };
 
   const openUpdateDialog = (product: Product) => {
-    // Convert additionalDetails object to array of key-value pairs for form
     const additionalDetailsArray: KeyValuePair[] = product.additionalDetails
       ? Object.entries(product.additionalDetails).map(([key, value]) => ({
-          id: crypto.randomUUID(), // Assign a unique ID for React list key
+          id: crypto.randomUUID(),
           key: key,
-          value: String(value), // Ensure value is string
+          value: String(value),
         }))
       : [];
 
@@ -587,94 +628,49 @@ const AllProductPage = () => {
       COD: product.COD,
       subCategoryId: product.subCategoryId,
       additionalDetails: additionalDetailsArray,
-      // Removed areAdditionalDetailsRequired
     });
+    setUpdateFormErrors(initialFormErrors);
     setIsUpdateDialogOpen(true);
   };
 
   const handleUpdateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    setUpdateFormErrors(initialFormErrors);
+
+    const { errors, isValid } = validateForm(updateForm);
+    if (!isValid) {
+      setUpdateFormErrors(errors);
+      toast.error("Please correct the errors in the form.");
+      return;
+    }
+
     setIsUpdating(true);
-    // Removed setError(null);
-
-    // Validate required fields
-    if (!updateForm.name.trim()) {
-      toast.error("Product Name is required.");
-      setIsUpdating(false);
-      return;
-    }
-    if (!updateForm.description.trim()) {
-      toast.error("Description is required.");
-      setIsUpdating(false);
-      return;
-    }
-    if (updateForm.price <= 0) {
-      toast.error("Price must be greater than 0.");
-      setIsUpdating(false);
-      return;
-    }
-    if (updateForm.stock < 0) {
-      toast.error("Stock cannot be negative.");
-      setIsUpdating(false);
-      return;
-    }
-
-    // Additional Details are now always optional, but if added, keys/values must be non-empty
-    for (const detail of updateForm.additionalDetails) {
-      if (
-        (detail.key.trim() && !detail.value.trim()) ||
-        (!detail.key.trim() && detail.value.trim())
-      ) {
-        toast.error(
-          "Additional Detail fields must have both a key and a value, or be completely empty."
-        );
-        setIsUpdating(false);
-        return;
-      }
-    }
 
     try {
-      // Build additionalDetails object, omitting empty keys
       const additionalDetailsObject: AdditionalDetails = {};
       updateForm.additionalDetails.forEach((detail) => {
-        if (detail.key.trim()) {
+        if (detail.key.trim() && detail.value.trim()) {
           additionalDetailsObject[detail.key.trim()] = detail.value.trim();
         }
       });
 
-      // Construct payload, conditionally adding fields
       const payload: { [key: string]: any } = {
         name: updateForm.name.trim(),
         price: Number(updateForm.price),
         stock: Number(updateForm.stock),
         COD: Boolean(updateForm.COD),
+        description: updateForm.description.trim() || null,
+        additionalDetails: additionalDetailsObject,
       };
 
-      // Handle description: send null if empty to clear it on backend
-      payload.description =
-        updateForm.description.trim() === ""
-          ? null
-          : updateForm.description.trim();
-
-      // Handle subCategoryId: only add if not null and not "none"
       if (
         updateForm.subCategoryId !== null &&
         updateForm.subCategoryId !== "none"
       ) {
         payload.subCategoryId = updateForm.subCategoryId;
       } else {
-        // If it's explicitly "none" or null, ensure it's not present in the payload
-        // Or if the backend expects null to clear, you could explicitly set it here.
-        // For this scenario, we'll just omit it if it's "none" or null.
-        // If you need to explicitly send null to clear it on the backend, you would do:
-        // payload.subCategoryId = null;
+        payload.subCategoryId = null;
       }
-
-      // Handle additionalDetails: send null if empty to clear it on backend
-      payload.additionalDetails =
-        Object.keys(additionalDetailsObject).length > 0
-          ? additionalDetailsObject
-          : null;
 
       const response = await axiosInstance.patch(
         `/admin/product/${updateForm.id}`,
@@ -689,8 +685,17 @@ const AllProductPage = () => {
         toast.error(response.data.message || "Failed to update product.");
       }
     } catch (err: any) {
-      // Removed setError(err.message || "An unexpected error occurred during update.");
-      toast.error(err.response?.data?.message || "Error updating product.");
+      const apiError = err.response?.data;
+      if (apiError && apiError.errors) {
+        setUpdateFormErrors((prev) => ({ ...prev, ...apiError.errors }));
+        toast.error(
+          apiError.message || "Server validation failed. Please check the form."
+        );
+      } else {
+        toast.error(
+          apiError?.message || "An unexpected error occurred. Please try again."
+        );
+      }
     } finally {
       setIsUpdating(false);
     }
@@ -705,7 +710,6 @@ const AllProductPage = () => {
     if (!productToDeleteId) return;
 
     setIsDeleting(true);
-    // Removed setError(null);
     try {
       const response = await axiosInstance.delete(
         `/admin/product/${productToDeleteId}`
@@ -719,8 +723,10 @@ const AllProductPage = () => {
         toast.error(response.data.message || "Failed to delete product.");
       }
     } catch (err: any) {
-      // Removed setError(err.message || "An unexpected error occurred during deletion.");
-      toast.error(err.response?.data?.message || "Error deleting product.");
+      toast.error(
+        err.response?.data?.message ||
+          "An error occurred during deletion. The product might be in use."
+      );
     } finally {
       setIsDeleting(false);
     }
@@ -752,7 +758,10 @@ const AllProductPage = () => {
               </div>
             </div>
             <Button
-              onClick={() => setIsCreateDialogOpen(true)}
+              onClick={() => {
+                setIsCreateDialogOpen(true);
+                setCreateFormErrors(initialFormErrors);
+              }}
               disabled={loading}
             >
               <Plus className="h-4 w-4 mr-2" />
@@ -764,7 +773,7 @@ const AllProductPage = () => {
 
       {/* Main Content Area */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards (Basic placeholder, can be expanded with more metrics) */}
+        {/* Stats Cards */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -865,12 +874,10 @@ const AllProductPage = () => {
                   className="w-full pl-10 pr-4 py-2"
                   aria-label="Search products"
                   disabled={loading}
-                  maxLength={255} // Max length for search query
+                  maxLength={255}
                 />
               </div>
-              {/* Wrapped filters and refresh button in a div with flex-wrap */}
               <div className="w-full sm:w-auto flex flex-wrap gap-4 items-center justify-end">
-                {/* SubCategory Filter */}
                 <div className="relative flex-grow">
                   <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <Select
@@ -881,7 +888,7 @@ const AllProductPage = () => {
                     <SelectTrigger className="w-full min-w-[180px] pl-10">
                       <SelectValue placeholder="Filter by subcategory" />
                     </SelectTrigger>
-                    <SelectContent className="rounded-lg shadow-lg bg-popover">
+                    <SelectContent>
                       <SelectItem value="all">All Subcategories</SelectItem>
                       {subCategoriesOptions.length === 0 ? (
                         <SelectItem value="none" disabled>
@@ -897,7 +904,6 @@ const AllProductPage = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                {/* COD Filter */}
                 <div className="relative flex-grow">
                   <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <Select
@@ -908,7 +914,7 @@ const AllProductPage = () => {
                     <SelectTrigger className="w-full min-w-[200px] pl-10">
                       <SelectValue placeholder="Filter by COD" />
                     </SelectTrigger>
-                    <SelectContent className="rounded-lg shadow-lg bg-popover">
+                    <SelectContent>
                       <SelectItem value="all">All COD Status</SelectItem>
                       <SelectItem value="true">COD Enabled</SelectItem>
                       <SelectItem value="false">COD Disabled</SelectItem>
@@ -919,7 +925,7 @@ const AllProductPage = () => {
                   onClick={handleRefresh}
                   disabled={loading}
                   variant="outline"
-                  className="flex items-center gap-2 flex-shrink-0 hover:bg-primary" // Added flex-shrink-0
+                  className="flex items-center gap-2 flex-shrink-0"
                   aria-label="Refresh product list"
                 >
                   <RefreshCw
@@ -931,8 +937,6 @@ const AllProductPage = () => {
             </div>
           </Card>
         </motion.div>
-
-        {/* Removed Error Message component */}
 
         {/* Products Table */}
         <motion.div
@@ -946,59 +950,21 @@ const AllProductPage = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>
-                        <Skeleton className="h-4 w-32" />
-                      </TableHead>
-                      <TableHead>
-                        <Skeleton className="h-4 w-48" />
-                      </TableHead>
-                      <TableHead>
-                        <Skeleton className="h-4 w-24" />
-                      </TableHead>
-                      <TableHead>
-                        <Skeleton className="h-4 w-16" />
-                      </TableHead>
-                      <TableHead>
-                        <Skeleton className="h-4 w-12" />
-                      </TableHead>
-                      <TableHead>
-                        <Skeleton className="h-4 w-16" />
-                      </TableHead>
-                      <TableHead>
-                        <Skeleton className="h-4 w-28" />
-                      </TableHead>
-                      <TableHead className="text-right">
-                        <Skeleton className="h-4 w-16" />
-                      </TableHead>
+                      {[...Array(8)].map((_, i) => (
+                        <TableHead key={i}>
+                          <Skeleton className="h-4 w-full" />
+                        </TableHead>
+                      ))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {[...Array(10)].map((_, idx) => (
                       <TableRow key={idx}>
-                        <TableCell>
-                          <Skeleton className="h-4 w-32" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-48" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-16" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-12" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-16" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-28" />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Skeleton className="h-8 w-16" />
-                        </TableCell>
+                        {[...Array(8)].map((_, i) => (
+                          <TableCell key={i}>
+                            <Skeleton className="h-4 w-full" />
+                          </TableCell>
+                        ))}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -1074,18 +1040,16 @@ const AllProductPage = () => {
                         <TableCell className="text-foreground">
                           {formatCurrency(product.price)}
                         </TableCell>
-                        <TableCell className="text-muted-foreground">
+                        <TableCell>
                           <Badge
-                            className={
-                              product.stock === 0
-                                ? "bg-red-100 text-red-800"
-                                : "bg-blue-100 text-blue-800"
+                            variant={
+                              product.stock === 0 ? "destructive" : "secondary"
                             }
                           >
                             {product.stock}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">
+                        <TableCell>
                           {product.COD ? (
                             <CheckCircle className="h-5 w-5 text-green-500" />
                           ) : (
@@ -1101,8 +1065,8 @@ const AllProductPage = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => handleViewDetails(product.id)}
-                              className="hover:text-primary hover:bg-primary/10 border-border"
                               disabled={loading}
+                              className="hover:text-primary hover:bg-primary/10 border-border"
                             >
                               <Eye className="h-4 w-4 mr-1" />
                               View
@@ -1111,8 +1075,8 @@ const AllProductPage = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => openUpdateDialog(product)}
-                              className="hover:text-primary hover:bg-primary/10 border-border"
                               disabled={loading}
+                              className="hover:text-primary hover:bg-primary/10 border-border"
                             >
                               <Edit className="h-4 w-4 mr-1" />
                               Edit
@@ -1124,14 +1088,14 @@ const AllProductPage = () => {
                                 handleDeleteProductClick(product.id)
                               }
                               disabled={isDeleting || loading}
-                              className="hover:bg-destructive/10 hover:border-destructive hover:text-destructive border-border"
+                              className="hover:bg-destructive/10 hover:border-destructive hover:text-destructive"
                             >
                               {isDeleting &&
                               productToDeleteId === product.id ? (
-                                <div className="flex items-center">
-                                  <LoadingSpinner className="h-4 w-4 mr-1 text-destructive" />{" "}
+                                <>
+                                  <LoadingSpinner className="h-4 w-4 mr-1" />
                                   Deleting...
-                                </div>
+                                </>
                               ) : (
                                 <>
                                   <Trash2 className="h-4 w-4 mr-1" />
@@ -1185,14 +1149,13 @@ const AllProductPage = () => {
         )}
       </div>
 
-      {/* Create Product Dialog */}
+      {/* --- Create Product Dialog with Validations --- */}
       <Dialog
         open={isCreateDialogOpen}
         onOpenChange={(open) => {
           setIsCreateDialogOpen(open);
           if (!open) {
-            setIsCreating(false); // Reset loading state on dialog close
-            // Reset form to initial state if dialog is closed without submission
+            setIsCreating(false);
             setCreateForm({
               name: "",
               description: "",
@@ -1201,18 +1164,20 @@ const AllProductPage = () => {
               COD: false,
               subCategoryId: null,
               additionalDetails: [],
-              // Removed areAdditionalDetailsRequired
             });
+            setCreateFormImages([]);
+            setCreateFormErrors(initialFormErrors);
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-auto">
           <DialogHeader>
             <DialogTitle>Create New Product</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleCreateProduct} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
+              {/* Product Name */}
+              <div className="md:col-span-2">
                 <label
                   htmlFor="createName"
                   className="block text-sm font-medium text-foreground mb-1"
@@ -1221,17 +1186,21 @@ const AllProductPage = () => {
                 </label>
                 <Input
                   id="createName"
-                  type="text"
                   value={createForm.name}
                   onChange={(e) =>
                     setCreateForm({ ...createForm, name: e.target.value })
                   }
-                  placeholder="Enter product name"
+                  placeholder="e.g., Premium Wireless Headphones"
                   disabled={isCreating}
-                  required
-                  maxLength={255} // Max length for product name
+                  maxLength={255}
                 />
+                {createFormErrors.name && (
+                  <p className="text-sm text-destructive mt-1">
+                    {createFormErrors.name}
+                  </p>
+                )}
               </div>
+              {/* Price */}
               <div>
                 <label
                   htmlFor="createPrice"
@@ -1246,17 +1215,21 @@ const AllProductPage = () => {
                   onChange={(e) =>
                     setCreateForm({
                       ...createForm,
-                      price: Number(e.target.value),
+                      price: e.target.valueAsNumber || 0,
                     })
                   }
-                  placeholder="Enter price"
+                  placeholder="e.g., 2999.99"
                   disabled={isCreating}
-                  required
                   min="0"
-                  max="999999.99" // Example: max price value
-                  step="0.01" // Allow decimal values for currency
+                  step="0.01"
                 />
+                {createFormErrors.price && (
+                  <p className="text-sm text-destructive mt-1">
+                    {createFormErrors.price}
+                  </p>
+                )}
               </div>
+              {/* Stock */}
               <div>
                 <label
                   htmlFor="createStock"
@@ -1271,56 +1244,26 @@ const AllProductPage = () => {
                   onChange={(e) =>
                     setCreateForm({
                       ...createForm,
-                      stock: Number(e.target.value),
+                      stock: e.target.valueAsNumber || 0,
                     })
                   }
-                  placeholder="Enter stock quantity"
+                  placeholder="e.g., 100"
                   disabled={isCreating}
-                  required
                   min="0"
-                  max="999999" // Example: max stock value
                 />
+                {createFormErrors.stock && (
+                  <p className="text-sm text-destructive mt-1">
+                    {createFormErrors.stock}
+                  </p>
+                )}
               </div>
-              <div>
-                <label
-                  htmlFor="createSubCategory"
-                  className="block text-sm font-medium text-foreground mb-1"
-                >
-                  SubCategory
-                </label>
-                <Select
-                  value={createForm.subCategoryId ?? "none"} // Use "none" for Select if null
-                  onValueChange={(value) =>
-                    setCreateForm({
-                      ...createForm,
-                      subCategoryId: value === "none" ? null : value, // Convert back to null if "none" string
-                    })
-                  }
-                  disabled={
-                    isCreating || subCategoriesOptions.length === 0 || loading
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a subcategory" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-lg shadow-lg bg-popover">
-                    <SelectItem value="none">No Subcategory</SelectItem>{" "}
-                    {/* Value changed to "none" */}
-                    {subCategoriesOptions.map((subcat) => (
-                      <SelectItem key={subcat.id} value={subcat.id}>
-                        {subcat.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Description */}
               <div className="md:col-span-2">
                 <label
                   htmlFor="createDescription"
                   className="block text-sm font-medium text-foreground mb-1"
                 >
-                  Description <span className="text-destructive">*</span>{" "}
-                  {/* Added required indicator */}
+                  Description <span className="text-destructive">*</span>
                 </label>
                 <Textarea
                   id="createDescription"
@@ -1331,23 +1274,129 @@ const AllProductPage = () => {
                       description: e.target.value,
                     })
                   }
-                  placeholder="Enter product description"
+                  placeholder="Detailed description of the product..."
                   disabled={isCreating}
-                  required // Made required
                   rows={3}
-                  maxLength={2000} // Max length for description
+                  maxLength={2000}
                 />
+                {createFormErrors.description && (
+                  <p className="text-sm text-destructive mt-1">
+                    {createFormErrors.description}
+                  </p>
+                )}
               </div>
+              {/* SubCategory */}
+              <div className="md:col-span-2">
+                <label
+                  htmlFor="createSubCategory"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  SubCategory
+                </label>
+                <Select
+                  value={createForm.subCategoryId ?? "none"}
+                  onValueChange={(value) =>
+                    setCreateForm({
+                      ...createForm,
+                      subCategoryId: value === "none" ? null : value,
+                    })
+                  }
+                  disabled={
+                    isCreating || subCategoriesOptions.length === 0 || loading
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a subcategory (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Subcategory</SelectItem>
+                    {subCategoriesOptions.map((subcat) => (
+                      <SelectItem key={subcat.id} value={subcat.id}>
+                        {subcat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Image Upload */}
+              <div className="md:col-span-2">
+                <label
+                  htmlFor="createImages"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Product Images (Optional)
+                </label>
+                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-md">
+                  <div className="space-y-1 text-center">
+                    <UploadCloud className="mx-auto h-12 w-12 text-muted-foreground" />
+                    <label
+                      htmlFor="createImages"
+                      className="relative cursor-pointer rounded-md font-medium text-primary hover:text-primary/80 focus-within:outline-none"
+                    >
+                      <span>Upload files</span>
+                      <Input
+                        id="createImages"
+                        name="createImages"
+                        type="file"
+                        multiple
+                        accept="image/png, image/jpeg, image/webp"
+                        onChange={handleImageSelect}
+                        disabled={isCreating}
+                        className="sr-only"
+                      />
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      PNG, JPG, WEBP up to 10MB
+                    </p>
+                  </div>
+                </div>
+              </div>
+              {/* Image Previews */}
+              {createFormImages.length > 0 && (
+                <div className="md:col-span-2">
+                  <p className="text-sm font-medium text-foreground mb-2">
+                    Selected Images:
+                  </p>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
+                    {createFormImages.map((file, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt={`preview ${index}`}
+                          className="w-24 h-24 object-cover rounded-md"
+                          onLoad={(e) =>
+                            URL.revokeObjectURL(
+                              (e.target as HTMLImageElement).src
+                            )
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          onClick={() => handleRemoveImage(index)}
+                          disabled={isCreating}
+                          className="absolute -top-2 -right-2 h-6 w-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label="Remove image"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Additional Details */}
               <div className="md:col-span-2">
                 <p className="block text-sm font-medium text-foreground mb-1">
-                  Additional Details
+                  Additional Details <span className="text-destructive">*</span>
                 </p>
                 <div className="space-y-2">
-                  {createForm.additionalDetails.map((detail, index) => (
+                  {createForm.additionalDetails.map((detail) => (
                     <div key={detail.id} className="flex items-center gap-2">
                       <Input
                         type="text"
-                        placeholder="Key"
+                        placeholder="Key (e.g., Color)"
                         value={detail.key}
                         onChange={(e) =>
                           handleAdditionalDetailChange(
@@ -1359,12 +1408,11 @@ const AllProductPage = () => {
                         }
                         disabled={isCreating}
                         className="w-1/2"
-                        required={!!detail.value.trim()} // Required if value is not empty
-                        maxLength={100} // Max length for additional detail key
+                        maxLength={100}
                       />
                       <Input
                         type="text"
-                        placeholder="Value"
+                        placeholder="Value (e.g., Black)"
                         value={detail.value}
                         onChange={(e) =>
                           handleAdditionalDetailChange(
@@ -1376,8 +1424,7 @@ const AllProductPage = () => {
                         }
                         disabled={isCreating}
                         className="w-1/2"
-                        required={!!detail.key.trim()} // Required if key is not empty
-                        maxLength={255} // Max length for additional detail value
+                        maxLength={255}
                       />
                       <Button
                         type="button"
@@ -1393,6 +1440,11 @@ const AllProductPage = () => {
                       </Button>
                     </div>
                   ))}
+                  {createFormErrors.additionalDetails && (
+                    <p className="text-sm text-destructive">
+                      {createFormErrors.additionalDetails}
+                    </p>
+                  )}
                   <Button
                     type="button"
                     variant="outline"
@@ -1404,6 +1456,7 @@ const AllProductPage = () => {
                   </Button>
                 </div>
               </div>
+              {/* COD Checkbox */}
               <div className="md:col-span-2 flex items-center space-x-2">
                 <input
                   type="checkbox"
@@ -1434,9 +1487,9 @@ const AllProductPage = () => {
               </Button>
               <Button type="submit" disabled={isCreating}>
                 {isCreating ? (
-                  <div className="flex items-center">
+                  <>
                     <LoadingSpinner className="h-4 w-4 mr-2" /> Creating...
-                  </div>
+                  </>
                 ) : (
                   "Create Product"
                 )}
@@ -1446,14 +1499,13 @@ const AllProductPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Update Product Dialog */}
+      {/* --- Update Product Dialog with Validations --- */}
       <Dialog
         open={isUpdateDialogOpen}
         onOpenChange={(open) => {
           setIsUpdateDialogOpen(open);
           if (!open) {
-            setIsUpdating(false); // Reset loading state on dialog close
-            // Reset form to initial state if dialog is closed without submission
+            setIsUpdating(false);
             setUpdateForm({
               id: "",
               name: "",
@@ -1463,8 +1515,8 @@ const AllProductPage = () => {
               COD: false,
               subCategoryId: null,
               additionalDetails: [],
-              // Removed areAdditionalDetailsRequired
             });
+            setUpdateFormErrors(initialFormErrors);
           }
         }}
       >
@@ -1474,7 +1526,8 @@ const AllProductPage = () => {
           </DialogHeader>
           <form onSubmit={handleUpdateProduct} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
+              {/* Product Name */}
+              <div className="md:col-span-2">
                 <label
                   htmlFor="updateName"
                   className="block text-sm font-medium text-foreground mb-1"
@@ -1483,17 +1536,20 @@ const AllProductPage = () => {
                 </label>
                 <Input
                   id="updateName"
-                  type="text"
                   value={updateForm.name}
                   onChange={(e) =>
                     setUpdateForm({ ...updateForm, name: e.target.value })
                   }
-                  placeholder="Enter product name"
                   disabled={isUpdating}
-                  required
-                  maxLength={255} // Max length for product name
+                  maxLength={255}
                 />
+                {updateFormErrors.name && (
+                  <p className="text-sm text-destructive mt-1">
+                    {updateFormErrors.name}
+                  </p>
+                )}
               </div>
+              {/* Price */}
               <div>
                 <label
                   htmlFor="updatePrice"
@@ -1508,17 +1564,20 @@ const AllProductPage = () => {
                   onChange={(e) =>
                     setUpdateForm({
                       ...updateForm,
-                      price: Number(e.target.value),
+                      price: e.target.valueAsNumber || 0,
                     })
                   }
-                  placeholder="Enter price"
                   disabled={isUpdating}
-                  required
                   min="0"
-                  max="999999.99" // Example: max price value
-                  step="0.01" // Allow decimal values for currency
+                  step="0.01"
                 />
+                {updateFormErrors.price && (
+                  <p className="text-sm text-destructive mt-1">
+                    {updateFormErrors.price}
+                  </p>
+                )}
               </div>
+              {/* Stock */}
               <div>
                 <label
                   htmlFor="updateStock"
@@ -1533,56 +1592,25 @@ const AllProductPage = () => {
                   onChange={(e) =>
                     setUpdateForm({
                       ...updateForm,
-                      stock: Number(e.target.value),
+                      stock: e.target.valueAsNumber || 0,
                     })
                   }
-                  placeholder="Enter stock quantity"
                   disabled={isUpdating}
-                  required
                   min="0"
-                  max="999999" // Example: max stock value
                 />
+                {updateFormErrors.stock && (
+                  <p className="text-sm text-destructive mt-1">
+                    {updateFormErrors.stock}
+                  </p>
+                )}
               </div>
-              <div>
-                <label
-                  htmlFor="updateSubCategory"
-                  className="block text-sm font-medium text-foreground mb-1"
-                >
-                  SubCategory
-                </label>
-                <Select
-                  value={updateForm.subCategoryId ?? "none"} // Use "none" for Select if null
-                  onValueChange={(value) =>
-                    setUpdateForm({
-                      ...updateForm,
-                      subCategoryId: value === "none" ? null : value, // Convert back to null if "none" string
-                    })
-                  }
-                  disabled={
-                    isUpdating || subCategoriesOptions.length === 0 || loading
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a subcategory" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-lg shadow-lg bg-popover">
-                    <SelectItem value="none">No Subcategory</SelectItem>{" "}
-                    {/* Value changed to "none" */}
-                    {subCategoriesOptions.map((subcat) => (
-                      <SelectItem key={subcat.id} value={subcat.id}>
-                        {subcat.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Description */}
               <div className="md:col-span-2">
                 <label
                   htmlFor="updateDescription"
                   className="block text-sm font-medium text-foreground mb-1"
                 >
-                  Description <span className="text-destructive">*</span>{" "}
-                  {/* Added required indicator */}
+                  Description <span className="text-destructive">*</span>
                 </label>
                 <Textarea
                   id="updateDescription"
@@ -1593,19 +1621,56 @@ const AllProductPage = () => {
                       description: e.target.value,
                     })
                   }
-                  placeholder="Enter product description"
                   disabled={isUpdating}
-                  required // Made required
                   rows={3}
-                  maxLength={2000} // Max length for description
+                  maxLength={2000}
                 />
+                {updateFormErrors.description && (
+                  <p className="text-sm text-destructive mt-1">
+                    {updateFormErrors.description}
+                  </p>
+                )}
               </div>
+              {/* SubCategory */}
+              <div className="md:col-span-2">
+                <label
+                  htmlFor="updateSubCategory"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  SubCategory
+                </label>
+                <Select
+                  value={updateForm.subCategoryId ?? "none"}
+                  onValueChange={(value) =>
+                    setUpdateForm({
+                      ...updateForm,
+                      subCategoryId: value === "none" ? null : value,
+                    })
+                  }
+                  disabled={
+                    isUpdating || subCategoriesOptions.length === 0 || loading
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a subcategory (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Subcategory</SelectItem>
+                    {subCategoriesOptions.map((subcat) => (
+                      <SelectItem key={subcat.id} value={subcat.id}>
+                        {subcat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Additional Details */}
               <div className="md:col-span-2">
                 <p className="block text-sm font-medium text-foreground mb-1">
-                  Additional Details
+                  Additional Details <span className="text-destructive">*</span>
                 </p>
                 <div className="space-y-2">
-                  {updateForm.additionalDetails.map((detail, index) => (
+                  {updateForm.additionalDetails.map((detail) => (
                     <div key={detail.id} className="flex items-center gap-2">
                       <Input
                         type="text"
@@ -1621,8 +1686,7 @@ const AllProductPage = () => {
                         }
                         disabled={isUpdating}
                         className="w-1/2"
-                        required={!!detail.value.trim()} // Required if value is not empty
-                        maxLength={100} // Max length for additional detail key
+                        maxLength={100}
                       />
                       <Input
                         type="text"
@@ -1638,8 +1702,7 @@ const AllProductPage = () => {
                         }
                         disabled={isUpdating}
                         className="w-1/2"
-                        required={!!detail.key.trim()} // Required if key is not empty
-                        maxLength={255} // Max length for additional detail value
+                        maxLength={255}
                       />
                       <Button
                         type="button"
@@ -1655,6 +1718,11 @@ const AllProductPage = () => {
                       </Button>
                     </div>
                   ))}
+                  {updateFormErrors.additionalDetails && (
+                    <p className="text-sm text-destructive">
+                      {updateFormErrors.additionalDetails}
+                    </p>
+                  )}
                   <Button
                     type="button"
                     variant="outline"
@@ -1666,6 +1734,7 @@ const AllProductPage = () => {
                   </Button>
                 </div>
               </div>
+              {/* COD Checkbox */}
               <div className="md:col-span-2 flex items-center space-x-2">
                 <input
                   type="checkbox"
@@ -1696,9 +1765,9 @@ const AllProductPage = () => {
               </Button>
               <Button type="submit" disabled={isUpdating}>
                 {isUpdating ? (
-                  <div className="flex items-center">
+                  <>
                     <LoadingSpinner className="h-4 w-4 mr-2" /> Updating...
-                  </div>
+                  </>
                 ) : (
                   "Update Product"
                 )}
@@ -1713,7 +1782,7 @@ const AllProductPage = () => {
         open={isDeleteDialogOpen}
         onOpenChange={(open) => {
           setIsDeleteDialogOpen(open);
-          if (!open) setIsDeleting(false); // Reset loading state on dialog close
+          if (!open) setIsDeleting(false);
         }}
       >
         <DialogContent className="sm:max-w-md">
@@ -1740,10 +1809,10 @@ const AllProductPage = () => {
                 disabled={isDeleting}
               >
                 {isDeleting ? (
-                  <div className="flex items-center">
-                    <LoadingSpinner className="h-4 w-4 mr-1 text-destructive" />{" "}
+                  <>
+                    <LoadingSpinner className="h-4 w-4 mr-1" />
                     Deleting...
-                  </div>
+                  </>
                 ) : (
                   <>
                     <Trash2 className="h-4 w-4 mr-1" />

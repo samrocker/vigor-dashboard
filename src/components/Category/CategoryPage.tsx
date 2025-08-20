@@ -1058,7 +1058,6 @@ const CategoryDetailsPage = () => {
                               onClick={() =>
                                 handleOpenEditSubCategoryDialog(subCat)
                               }
-                              className="hover:bg-yellow-500 hover:text-white"
                             >
                               <Edit className="h-4 w-4 mr-1" /> Edit
                             </Button>

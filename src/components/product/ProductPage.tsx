@@ -287,7 +287,9 @@ const ProductDetailsPage = () => {
         setProduct(response.data.data.product);
         // Removed setError(null);
       } else {
-        toast.error(response.data.message || "Failed to fetch product details."); // Display toast error
+        toast.error(
+          response.data.message || "Failed to fetch product details."
+        ); // Display toast error
         setProduct(null);
       }
     } catch (err: any) {
@@ -857,7 +859,7 @@ const ProductDetailsPage = () => {
             </div>
             <Button
               variant="outline"
-              onClick={() => router.push('/product')}
+              onClick={() => router.push("/product")}
               className="hover:bg-primary"
               disabled={loading}
             >
@@ -954,7 +956,7 @@ const ProductDetailsPage = () => {
                     <p className="text-muted-foreground mb-2">
                       Additional Details:
                     </p>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    <div className="grid grid-cols-2 max-w-fit">
                       {Object.entries(product.additionalDetails).map(
                         ([key, value]) => (
                           <React.Fragment key={key}>
@@ -1113,17 +1115,7 @@ const ProductDetailsPage = () => {
                       <TableRow key={variant.id}>
                         <TableCell>
                           <span className="text-muted-foreground max-w-xs truncate">
-                            {/* Correctly render variant name values from the 'value' object */}
-                            {Object.entries(variant.value).map(([key, val]) => (
-                              <span key={key} className="capitalize">
-                                {key}: {val}
-                                {/* Add a comma if not the last item */}
-                                {Object.keys(variant.value).indexOf(key) <
-                                Object.keys(variant.value).length - 1
-                                  ? ", "
-                                  : ""}
-                              </span>
-                            ))}
+                            {variant.name}
                           </span>
                         </TableCell>
                         <TableCell>{formatCurrency(variant.price)}</TableCell>
