@@ -343,7 +343,7 @@ const AllAdminPage = ({ userRole }: { userRole: string | null }) => {
       setEditAdminName("");
       fetchAllAdmins();
     } catch (error: any) {
-      let apiMessage =
+      const apiMessage =
         error?.response?.data?.message ||
         error?.response?.data?.error ||
         error?.message ||

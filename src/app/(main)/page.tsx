@@ -23,7 +23,7 @@ export default function Home() {
   // }, [router]);
 
   useEffect(() => {
-    router.push("/dashboard");
+    router.push("/users");
   }, [router]);
 
   return (
