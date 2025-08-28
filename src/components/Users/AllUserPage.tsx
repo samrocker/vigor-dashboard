@@ -832,10 +832,10 @@ const AllUserPage = () => {
                       {deletingUser && deleteActionType === "soft" ? (
                         <div className="flex items-center">
                           <LoadingSpinner className="h-4 w-4 mr-2" />
-                          Soft Deleting...
+                          deactivating user...
                         </div>
                       ) : (
-                        "Soft Delete"
+                        "deactivate User"
                       )}
                     </Button>
                   ) : (
@@ -847,10 +847,10 @@ const AllUserPage = () => {
                       {deletingUser && deleteActionType === "recover" ? (
                         <div className="flex items-center">
                           <LoadingSpinner className="h-4 w-4 mr-2" />
-                          Recovering...
+                          Activating User...
                         </div>
                       ) : (
-                        "Recover User"
+                        "Activate User"
                       )}
                     </Button>
                   )}

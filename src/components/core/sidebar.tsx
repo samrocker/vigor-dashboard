@@ -168,7 +168,7 @@ const MainSidebar = ({
                   .filter((item) => {
                     if (
                       userRole !== "SUPER" &&
-                      (item.name === "Settings" || item.name === "Admin")
+                      (item.name === "Settings" || item.name === "Admin" || item.name === "Images")
                     ) {
                       return false;
                     }
@@ -265,7 +265,7 @@ const MiniSidebar = ({ toggleSidebar }: SidebarProps) => {
             .filter((item) => {
               if (
                 userRole !== "SUPER" &&
-                (item.name === "Settings" || item.name === "Admin")
+                (item.name === "Settings" || item.name === "Admin" || item.name === "Images")
               ) {
                 return false;
               }

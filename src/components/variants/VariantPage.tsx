@@ -433,12 +433,12 @@ const VariantDetailsPage = () => {
             </div>
             <Button
               variant="outline"
-              onClick={() => router.push('/variant')}
+              onClick={() => router.push('/product/' + variant.productId)}
               className="hover:bg-primary"
               disabled={loading}
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Variants
+              Back to product 
             </Button>
           </div>
         </div>

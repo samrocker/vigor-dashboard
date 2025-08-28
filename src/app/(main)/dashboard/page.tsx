@@ -1,21 +1,22 @@
-"use client"
-import Applayout from '@/components/core/Applayout'
-import AppSidebar from '@/components/core/sidebar'
-import { getAccessToken } from '@/lib/auth'
-import { useRouter } from 'next/navigation'
-import React from 'react'
+"use client";
+import Applayout from "@/components/core/Applayout";
+import AppSidebar from "@/components/core/sidebar";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { getAccessToken } from "@/lib/auth";
+import { useRouter } from "next/navigation";
+import React from "react";
 
 const DashboardPage = () => {
-  // const router  = useRouter()
-  // const accessToken = getAccessToken()
+  const router = useRouter();
+  const accessToken = getAccessToken();
 
-  // if(accessToken) {
-  //   router.push('/dashboard')
-  // }
-  
-  return (
-    <div>Analytics Page</div>
-  )
-}
+  if (accessToken) {
+    router.push("/users");
+  } else {
+    router.push("/login");
+  }
 
-export default DashboardPage
+  return <LoadingSpinner />;
+};
+
+export default DashboardPage;

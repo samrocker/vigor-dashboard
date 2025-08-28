@@ -1,50 +1,27 @@
-// app/admin/orders/page.tsx
 "use client";
-
-import React, { useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import {
-  Search,
+  Image as LucideImage,
   RefreshCw,
-  ShoppingCart, // Icon for orders
-  Truck, // Icon for shipping
-  CreditCard, // Icon for payment
-  DollarSign, // Icon for total amount
-  Calendar,
-  Filter,
-  ArrowUp,
-  ArrowDown,
-  Eye, // For 'View Order Details'
-  Info, // For error/empty state
-  User as UserIcon, // Renamed to avoid conflict with User interface
+  Trash2,
+  Eye,
+  Search,
+  Upload,
+  Edit2,
 } from "lucide-react";
-import { getAccessToken } from "@/lib/auth";
-import { ApiResponse, axiosInstance } from "@/lib/axios";
-import { isAxiosError } from "axios"; // Import for type-safe error handling
-
-// Shadcn UI components
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableHead,
-  TableRow,
-  TableCell,
-} from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { axiosInstance } from "@/lib/axios";
 import { toast } from "sonner";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
 
-// Import shadcn/ui Select components
+// SHADCN
 import {
   Select,
   SelectContent,
@@ -52,443 +29,331 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { motion } from "framer-motion";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Skeleton } from "../ui/skeleton";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Badge } from "../ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "../ui/dialog";
+import { Label } from "../ui/label";
+import { cn } from "@/lib/utils";
+import { getAccessToken } from "@/lib/auth";
 
-// --- Type Definitions ---
-export interface ShippingAddress {
-  city?: string;
-  pin?: string;
-  name?: string;
-  phone?: string;
-  address?: { [key: string]: any };
-  state?: string;
-  zip?: string;
-  country?: string;
-  isActive?: boolean;
-  deletedAt?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-}
+type ImageType = "HERO" | "LOGO" | "ICON";
+const IMAGE_TYPES: ImageType[] = ["HERO", "LOGO", "ICON"];
 
-export interface BillingAddress {
-  city?: string;
-  pin?: string;
-  name?: string;
-  phone?: string;
-  address?: { [key: string]: any };
-  state?: string;
-  zip?: string;
-  country?: string;
-  isActive?: boolean;
-  deletedAt?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export type OrderStatus =
-  | "PENDING"
-  | "CONFIRMED"
-  | "PROCESSING"
-  | "SHIPPED"
-  | "DELIVERED"
-  | "CANCELLED"
-  | "REFUNDED";
-
-export type PaymentStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
-
-export type PaymentMethod = "COD" | "CARD" | "UPI" | null;
-
-// User interface for fetching user names
-interface User {
+type Image = {
   id: string;
-  name: string;
-  email: string;
-  createdAt: string;
-  deletedAt: string | null;
-  isActive: boolean;
-  updatedAt: string;
-}
-
-export interface Order {
-  id: string;
-  userId: string;
-  status: OrderStatus;
-  totalAmount: number;
-  shippingAddress: ShippingAddress;
-  billingAddress: BillingAddress;
-  paymentMethod: PaymentMethod;
-  paymentStatus: PaymentStatus;
-  paymentId: string | null;
+  url: string;
+  type: ImageType | null;
   createdAt: string;
   updatedAt: string;
-  user?: User; // Add nested user object
-  invoiceUrl?: string | null;
-  items?: any[];
-}
-
-export interface OrdersData {
-  orders: Order[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
-
-export interface OrdersApiResponse extends ApiResponse {
-  data: OrdersData;
-}
-
-// --- Runtime Arrays for Select Options ---
-const orderStatusOptions: OrderStatus[] = [
-  "PENDING",
-  "CONFIRMED",
-  "PROCESSING",
-  "SHIPPED",
-  "DELIVERED",
-  "CANCELLED",
-  "REFUNDED",
-];
-
-const paymentStatusOptions: PaymentStatus[] = [
-  "PENDING",
-  "PROCESSING",
-  "COMPLETED",
-  "FAILED",
-];
-
-// --- Color Mappings ---
-// Added 'all' option to the color mappings
-const orderStatusColors: Record<OrderStatus | "all", string> = {
-  all: "bg-gray-100 text-gray-800", // Neutral color for 'all'
-  PENDING: "bg-yellow-100 text-yellow-800",
-  CONFIRMED: "bg-blue-100 text-blue-800",
-  PROCESSING: "bg-purple-100 text-purple-800",
-  SHIPPED: "bg-indigo-100 text-indigo-800",
-  DELIVERED: "bg-green-100 text-green-800",
-  CANCELLED: "bg-red-100 text-red-800",
-  REFUNDED: "bg-gray-100 text-gray-800",
 };
 
-const paymentStatusColors: Record<PaymentStatus | "all", string> = {
-  all: "bg-gray-100 text-gray-800", // Neutral color for 'all'
-  PENDING: "bg-yellow-100 text-yellow-800",
-  PROCESSING: "bg-blue-100 text-blue-800",
-  COMPLETED: "bg-emerald-100 text-emerald-800",
-  FAILED: "bg-red-100 text-red-800",
-};
+type AdminRole = "SUPER" | "SUB";
 
-// --- Utility Functions ---
-/**
- * Extracts a user-friendly error message from an API error object.
- * @param error The error object caught in a try-catch block.
- * @param defaultMessage A fallback message if no specific message can be found.
- * @returns A user-friendly error string.
- */
-const getApiErrorMessage = (
-  error: unknown,
-  defaultMessage: string
-): string => {
-  if (isAxiosError(error)) {
-    // Check if the backend sent a specific error message
-    if (error.response?.data?.message) {
-      return error.response.data.message;
-    }
+// Helper function to extract error messages from API responses
+const getErrorMessage = (error: any): string => {
+  // Check for different possible error message locations
+  if (error.response?.data?.message) {
+    return error.response.data.message;
   }
-  // Fallback to the standard error message property
-  if (error instanceof Error) {
+  if (error.response?.data?.error) {
+    return error.response.data.error;
+  }
+  if (
+    error.response?.data?.errors &&
+    Array.isArray(error.response.data.errors)
+  ) {
+    return error.response.data.errors.join(", ");
+  }
+  if (error.message) {
     return error.message;
   }
-  // Return the default message if all else fails
-  return defaultMessage;
+  return "An unexpected error occurred";
 };
 
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 2,
-  }).format(amount);
-}
-
-function formatDate(dateString: string | null) {
-  if (!dateString) return "N/A";
-  return new Date(dateString).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-// --- Component ---
-const AdminOrderManagement = () => {
-  const [allOrders, setAllOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalOrdersCount, setTotalOrdersCount] = useState(0);
-
-  // New states to track loading for individual order/payment status updates
-  const [updatingOrderStatusId, setUpdatingOrderStatusId] = useState<
-    string | null
-  >(null);
-  const [updatingPaymentStatusId, setUpdatingPaymentStatusId] = useState<
-    string | null
-  >(null);
-
-  // Filters
-  const [searchQuery, setSearchQuery] = useState("");
-  const [orderStatusFilter, setOrderStatusFilter] = useState<
-    OrderStatus | "all"
-  >("all");
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState<
-    PaymentStatus | "all"
-  >("all");
-
-  // Sorting
-  const [sortKey, setSortKey] = useState<keyof Order | null>("createdAt");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-
-  const token = getAccessToken();
+const AllImagesPage: React.FC = () => {
   const router = useRouter();
+  // Authentication and access state
+  const [roleLoading, setRoleLoading] = useState(true);
+  const [hasAccess, setHasAccess] = useState(false);
 
-  useEffect(() => {
-    if (!token) {
-      router.push("/login");
-      return;
-    }
-    fetchAllOrders();
-  }, [token, router]);
+  // Gallery states
+  const [images, setImages] = useState<Image[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<ImageType>("HERO");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploadType, setUploadType] = useState<ImageType>("HERO");
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [imageToEdit, setImageToEdit] = useState<Image | null>(null);
+  const [editType, setEditType] = useState<ImageType>("HERO");
+  const [editLoading, setEditLoading] = useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [imageToDelete, setImageToDelete] = useState<string | null>(null);
+  const [deletingImage, setDeletingImage] = useState(false);
+  const [previewImage, setPreviewImage] = useState<Image | null>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
-  const fetchAllOrders = async () => {
-    setLoading(true);
-    setError(null); // Reset error state before fetching
+  // Role check and redirect
+  const checkUserRole = useCallback(async () => {
+    setRoleLoading(true);
     try {
-      const response = await axiosInstance.get<OrdersApiResponse>(
-        "/admin/order?includeRelations=true"
+      const { data } = await axiosInstance.get(
+        "/admin/me?includeRelations=true",
+        {
+          headers: {
+            Authorization: `Bearer ${getAccessToken()}`,
+          },
+        }
       );
-      const data = response.data.data;
-      setAllOrders(data?.orders || []);
-      setTotalOrdersCount(data?.total || 0);
-    } catch (err: unknown) {
-      setAllOrders([]);
-      const errorMessage = getApiErrorMessage(
-        err,
-        "Failed to fetch orders. Please check your connection and try again."
-      );
-      setError(errorMessage);
-      console.error("Fetch orders error:", err);
+      const adminData = data.data.admin;
+      if (adminData.role === "SUB") {
+        router.replace("/users");
+        return;
+      }
+      setHasAccess(adminData.role === "SUPER");
+    } catch (error: any) {
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage);
+      router.replace("/users");
+    } finally {
+      setRoleLoading(false);
+    }
+  }, [router]);
+
+  // Fetch images
+  const fetchImages = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await axiosInstance.get(`/public/image`);
+      setImages(data.data.images);
+    } catch (error: any) {
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage);
+      setImages([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // --- Filtering & Sorting Logic ---
-  const filteredAndPaginatedOrders = useMemo(() => {
-    let currentOrders = [...allOrders];
+  useEffect(() => {
+    checkUserRole();
+  }, [checkUserRole]);
 
-    // 1. Apply Search Filter (Validation: Trim whitespace)
-    const trimmedQuery = searchQuery.trim().toLowerCase();
-    if (trimmedQuery) {
-      currentOrders = currentOrders.filter(
-        (order) =>
-          order.id.toLowerCase().includes(trimmedQuery) ||
-          order.userId.toLowerCase().includes(trimmedQuery) ||
-          (order.shippingAddress?.city &&
-            order.shippingAddress.city.toLowerCase().includes(trimmedQuery)) ||
-          (order.shippingAddress?.pin &&
-            order.shippingAddress.pin.includes(trimmedQuery)) ||
-          (order.user?.name &&
-            order.user.name.toLowerCase().includes(trimmedQuery))
+  useEffect(() => {
+    if (hasAccess) {
+      fetchImages();
+    }
+  }, [hasAccess, fetchImages]);
+
+  // Filtered images for UI
+  const filteredImages = useMemo(() => {
+    return images
+      .filter((img) => img.type === activeTab)
+      .filter(
+        (img) =>
+          img.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          new Date(img.createdAt)
+            .toLocaleDateString()
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase())
       );
-    }
+  }, [images, activeTab, searchQuery]);
 
-    // 2. Apply Order Status Filter
-    if (orderStatusFilter !== "all") {
-      currentOrders = currentOrders.filter(
-        (order) => order.status === orderStatusFilter
-      );
-    }
+  // Stats per type + total
+  const imageStats = useMemo(() => {
+    const counts = IMAGE_TYPES.reduce((acc, type) => {
+      acc[type] = images.filter((img) => img.type === type).length;
+      return acc;
+    }, {} as Record<ImageType, number>);
+    const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+    return { ...counts, TOTAL: total };
+  }, [images]);
 
-    // 3. Apply Payment Status Filter
-    if (paymentStatusFilter !== "all") {
-      currentOrders = currentOrders.filter(
-        (order) => order.paymentStatus === paymentStatusFilter
-      );
-    }
-
-    // 4. Apply Sorting
-    if (sortKey) {
-      currentOrders.sort((a, b) => {
-        const aValue = a[sortKey];
-        const bValue = b[sortKey];
-
-        if (aValue === null || aValue === undefined)
-          return sortDirection === "asc" ? -1 : 1;
-        if (bValue === null || bValue === undefined)
-          return sortDirection === "asc" ? 1 : -1;
-
-        if (typeof aValue === "string" && typeof bValue === "string") {
-          return sortDirection === "asc"
-            ? aValue.localeCompare(bValue)
-            : bValue.localeCompare(aValue);
-        }
-        if (typeof aValue === "number" && typeof bValue === "number") {
-          return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
-        }
-        if (sortKey === "createdAt" || sortKey === "updatedAt") {
-          const dateA = new Date(aValue as string).getTime();
-          const dateB = new Date(bValue as string).getTime();
-          return sortDirection === "asc" ? dateA - dateB : dateB - dateA;
-        }
-        return 0;
-      });
-    }
-
-    // 5. Apply Pagination
-    const ordersPerPage = 10;
-    const newTotalPages = Math.ceil(currentOrders.length / ordersPerPage);
-    setTotalPages(newTotalPages > 0 ? newTotalPages : 1);
-
-    const startIndex = (currentPage - 1) * ordersPerPage;
-    const endIndex = startIndex + ordersPerPage;
-
-    return currentOrders.slice(startIndex, endIndex);
-  }, [
-    allOrders,
-    searchQuery,
-    orderStatusFilter,
-    paymentStatusFilter,
-    sortKey,
-    sortDirection,
-    currentPage,
-  ]);
-
-  // --- Handlers ---
-  const handleRefresh = () => {
-    // Reset filters and fetch all orders again
-    setSearchQuery("");
-    setOrderStatusFilter("all");
-    setPaymentStatusFilter("all");
-    setCurrentPage(1);
-    setSortKey("createdAt");
-    setSortDirection("desc");
-    fetchAllOrders();
-  };
-
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    setCurrentPage(1);
-  };
-
-  const handleOrderStatusFilterChange = (value: OrderStatus | "all") => {
-    setOrderStatusFilter(value);
-    setCurrentPage(1);
-  };
-
-  const handlePaymentStatusFilterChange = (value: PaymentStatus | "all") => {
-    setPaymentStatusFilter(value);
-    setCurrentPage(1);
-  };
-
-  const handleSort = (key: keyof Order) => {
-    if (sortKey === key) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+  // Upload handler
+  const handleFile = (selectedFile: File) => {
+    if (selectedFile && selectedFile.type.startsWith("image/")) {
+      setFile(selectedFile);
     } else {
-      setSortKey(key);
-      setSortDirection("asc");
+      toast.error("Please select a valid image file.");
     }
   };
 
-  const renderSortIcon = (key: keyof Order) => {
-    if (sortKey !== key) return null;
-    return sortDirection === "asc" ? (
-      <ArrowUp className="ml-1 h-3 w-3 inline" />
-    ) : (
-      <ArrowDown className="ml-1 h-3 w-3 inline" />
-    );
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) handleFile(e.target.files[0]);
   };
 
-  const handleViewDetails = (orderId: string) => {
-    router.push(`/order/${orderId}`);
-  };
-
-  // Generic handler for updating order status or payment status
-  const handleUpdateStatus = async (
-    orderId: string,
-    field: "status" | "paymentStatus",
-    newValue: OrderStatus | PaymentStatus
-  ) => {
-    if (field === "status") {
-      setUpdatingOrderStatusId(orderId);
-    } else {
-      setUpdatingPaymentStatusId(orderId);
-    }
-
+  const onUpload = async () => {
+    if (!file) return;
+    setUploadLoading(true);
     try {
-      const payload = { [field]: newValue };
-      const response = await axiosInstance.patch<ApiResponse>(
-        `/admin/order/${orderId}`,
-        payload
+      const formData = new FormData();
+      formData.append("image", file);
+      const { data: uploadRes } = await axiosInstance.post(
+        `/admin/image`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
       );
-
-      if (response.data.status === "success") {
-        setAllOrders((prevOrders) =>
-          prevOrders.map((order) =>
-            order.id === orderId
-              ? { ...order, [field]: newValue as any }
-              : order
-          )
-        );
-        toast.success(
-          `Order ${
-            field === "status" ? "status" : "payment status"
-          } updated successfully.`
-        );
-      } else {
-        // Handle cases where API returns success: false but with a message
-        toast.error(response.data.message || `Failed to update ${field}.`);
-      }
-    } catch (err: unknown) {
-      const defaultMessage = `An unexpected error occurred. Please try again.`;
-      const errorMessage = getApiErrorMessage(err, defaultMessage);
+      const imageId = uploadRes.data.image.id;
+      await axiosInstance.patch(`/admin/image/${imageId}`, {
+        type: uploadType,
+      });
+      setFile(null);
+      setShowUploadDialog(false);
+      await fetchImages();
+      toast.success("Image uploaded successfully!");
+    } catch (error: any) {
+      const errorMessage = getErrorMessage(error);
       toast.error(errorMessage);
-      console.error(`Update ${field} error:`, err);
     } finally {
-      if (field === "status") {
-        setUpdatingOrderStatusId(null);
-      } else {
-        setUpdatingPaymentStatusId(null);
-      }
+      setUploadLoading(false);
     }
   };
 
-  // --- Render ---
+  // Drag and drop setup for upload dialog
+  useEffect(() => {
+    const div = dropRef.current;
+    if (!div || !showUploadDialog) return;
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      setIsDragging(true);
+    };
+    const handleDragLeave = () => setIsDragging(false);
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      if (e.dataTransfer?.files?.[0]) handleFile(e.dataTransfer.files[0]);
+    };
+    div.addEventListener("dragover", handleDragOver);
+    div.addEventListener("dragleave", handleDragLeave);
+    div.addEventListener("drop", handleDrop);
+    return () => {
+      div.removeEventListener("dragover", handleDragOver);
+      div.removeEventListener("dragleave", handleDragLeave);
+      div.removeEventListener("drop", handleDrop);
+    };
+  }, [showUploadDialog]);
+
+  // Edit handler
+  const handleEdit = (img: Image) => {
+    setImageToEdit(img);
+    setEditType(img.type || "HERO");
+    setShowEditDialog(true);
+  };
+
+  const onSaveEdit = async () => {
+    if (!imageToEdit) return;
+    setEditLoading(true);
+    try {
+      await axiosInstance.patch(`/admin/image/${imageToEdit.id}`, {
+        type: editType,
+      });
+      setShowEditDialog(false);
+      await fetchImages();
+      toast.success("Image type updated successfully!");
+    } catch (error: any) {
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // Refresh function
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setSearchQuery("");
+    await fetchImages();
+    setRefreshing(false);
+  };
+
+  // Delete handlers
+  const handleDelete = (imageId: string) => {
+    setImageToDelete(imageId);
+    setShowDeleteConfirmation(true);
+  };
+
+  const executeDelete = async () => {
+    if (!imageToDelete) return;
+    setDeletingImage(true);
+    try {
+      await axiosInstance.delete(`/admin/image/${imageToDelete}`, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `bearer ${getAccessToken()}`,
+        },
+      });
+      toast.success("Image deleted successfully.");
+      await fetchImages();
+    } catch (error: any) {
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage);
+    } finally {
+      setDeletingImage(false);
+      setShowDeleteConfirmation(false);
+      setImageToDelete(null);
+    }
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteConfirmation(false);
+    setImageToDelete(null);
+  };
+
+  // Preview handler
+  const handlePreview = (img: Image) => {
+    setPreviewImage(img);
+  };
+
+  if (roleLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <LoadingSpinner className="h-8 w-8 mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasAccess) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header Section */}
+      {/* Top Title and Stats */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="border-b border-border"
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-lg bg-muted">
-                <ShoppingCart className="h-6 w-6 text-muted-foreground" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 border-b border-border">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+            <div className="flex items-center space-x-4">
+              <div className="p-3 rounded-lg bg-muted">
+                <LucideImage className="h-8 w-8 text-blue-600" />
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-foreground">
-                  Order Management
+                  Image Gallery Management
                 </h1>
                 <p className="text-muted-foreground">
-                  View and manage customer orders
+                  Upload, edit, delete, and manage your images efficiently.
                 </p>
               </div>
             </div>
@@ -496,582 +361,395 @@ const AdminOrderManagement = () => {
         </div>
       </motion.div>
 
-      {/* Main Content Area */}
+      {/* Stats Cards */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1, duration: 0.5 }}
-            className="hover:shadow-md transition-shadow duration-200"
-          >
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Total Orders
-                </CardTitle>
-                <ShoppingCart className="h-4 w-4 text-primary" />
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-7 w-20" />
-                ) : (
-                  <div className="text-2xl font-bold text-foreground">
-                    {totalOrdersCount}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15, duration: 0.5 }}
-            className="hover:shadow-md transition-shadow duration-200"
-          >
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Total Revenue
-                </CardTitle>
-                <DollarSign className="h-4 w-4 text-green-600" />
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-7 w-20" />
-                ) : (
-                  <div className="text-2xl font-bold text-green-600">
-                    {formatCurrency(
-                      allOrders.reduce(
-                        (sum, order) => sum + order.totalAmount,
-                        0
-                      )
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2, duration: 0.5 }}
-            className="hover:shadow-md transition-shadow duration-200"
-          >
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Pending/Processing Orders
-                </CardTitle>
-                <Truck className="h-4 w-4 text-orange-500" />
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-7 w-20" />
-                ) : (
-                  <div className="text-2xl font-bold text-orange-500">
-                    {
-                      allOrders.filter(
-                        (order) =>
-                          order.status === "PENDING" ||
-                          order.status === "PROCESSING" ||
-                          order.status === "CONFIRMED"
-                      ).length
-                    }
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25, duration: 0.5 }}
-            className="hover:shadow-md transition-shadow duration-200"
-          >
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Delivered Orders
-                </CardTitle>
-                <CreditCard className="h-4 w-4 text-blue-600" />
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-7 w-20" />
-                ) : (
-                  <div className="text-2xl font-bold text-blue-600">
-                    {
-                      allOrders.filter((order) => order.status === "DELIVERED")
-                        .length
-                    }
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          {IMAGE_TYPES.map((type, idx) => (
+            <motion.div
+              key={type}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.06 * idx, duration: 0.5 }}
+            >
+              <Card className="hover:shadow-md transition-shadow">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {type.charAt(0) + type.slice(1).toLowerCase()}
+                  </CardTitle>
+                  <LucideImage className="h-4 w-4 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <Skeleton className="h-7 w-16" />
+                  ) : (
+                    <div className="text-xl font-bold text-foreground">
+                      {imageStats[type]}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
         </div>
 
-        {/* Controls: Search and Filters */}
+        {/* Controls */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.5 }}
+          transition={{ duration: 0.5 }}
         >
           <Card className="mb-8 p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-              {/* Search Input */}
-              <div className="relative w-full sm:w-auto">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+            <div className="flex flex-wrap gap-2 mb-6 justify-center sm:justify-start">
+              {IMAGE_TYPES.map((type) => (
+                <Button
+                  key={type}
+                  onClick={() => setActiveTab(type)}
+                  variant={activeTab === type ? "default" : "outline"}
+                  className="font-semibold"
+                >
+                  {type.charAt(0) + type.slice(1).toLowerCase()}
+                </Button>
+              ))}
+            </div>
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
                   type="text"
-                  placeholder="Search by Order ID, User ID, City, Pin, or User Name..."
+                  placeholder="Search by ID or date..."
                   value={searchQuery}
-                  onChange={handleSearch}
-                  className="w-full pl-10 pr-4 py-2 rounded-md border border-input focus:ring-2 focus:ring-primary"
-                  aria-label="Search orders"
-                  disabled={loading}
-                  maxLength={255} // Added max length for search query input
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10"
                 />
               </div>
-
-              {/* Filters and Refresh */}
-              <div className="flex flex-col sm:flex-row gap-3 items-center w-full max-w-[650px]">
-                {/* Order Status Filter */}
-                <div className="relative w-full">
-                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground z-10" />
-                  <Select
-                    value={orderStatusFilter}
-                    onValueChange={handleOrderStatusFilterChange}
-                    disabled={loading}
-                  >
-                    <SelectTrigger
-                      className={`
-                        w-full h-10 text-sm rounded-md border border-input bg-background focus:ring-2 focus:ring-primary
-                        pl-10 pr-4 py-2
-                        ${orderStatusColors[orderStatusFilter]}
-                        hover:bg-opacity-80 // Apply hover effect that keeps the color but makes it slightly transparent
-                      `}
-                      aria-label="Filter by order status"
-                    >
-                      <SelectValue placeholder="All Order Statuses" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-md shadow-lg bg-popover">
-                      <SelectItem
-                        value="all"
-                        className={`rounded-md text-sm font-medium my-1
-                            focus:bg-opacity-80 focus:text-opacity-90 ${orderStatusColors.all}
-                            hover:bg-opacity-80 // Ensure consistency on hover for individual items as well
-                            transition-all duration-150`}
-                      >
-                        All Order Statuses
-                      </SelectItem>
-                      {orderStatusOptions.map((status) => (
-                        <SelectItem
-                          key={status}
-                          value={status}
-                          className={`
-                            ${orderStatusColors[status]}
-                            rounded-md text-sm font-medium my-1
-                            focus:bg-opacity-80 focus:text-opacity-90
-                            hover:bg-opacity-80 // Ensure consistency on hover for individual items as well
-                            transition-all duration-150
-                          `}
-                        >
-                          {status}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Payment Status Filter */}
-                <div className="relative w-full">
-                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground z-10" />
-                  <Select
-                    value={paymentStatusFilter}
-                    onValueChange={handlePaymentStatusFilterChange}
-                    disabled={loading}
-                  >
-                    <SelectTrigger
-                      className={`
-                        w-full h-10 text-sm rounded-md border border-input bg-background focus:ring-2 focus:ring-primary
-                        pl-10 pr-4 py-2
-                        ${paymentStatusColors[paymentStatusFilter]}
-                        hover:bg-opacity-80 // Apply hover effect that keeps the color but makes it slightly transparent
-                      `}
-                      aria-label="Filter by payment status"
-                    >
-                      <SelectValue placeholder="All Payment Statuses" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-md shadow-lg bg-popover">
-                      <SelectItem
-                        value="all"
-                        className={`rounded-sm my-1 text-sm font-medium
-                            focus:bg-opacity-80 focus:text-opacity-90 ${paymentStatusColors.all}
-                            hover:bg-opacity-80 // Ensure consistency on hover for individual items as well
-                            transition-all duration-150`}
-                      >
-                        All Payment Statuses
-                      </SelectItem>
-                      {paymentStatusOptions.map((status) => (
-                        <SelectItem
-                          key={status}
-                          value={status}
-                          className={`
-                            ${paymentStatusColors[status]}
-                            rounded-sm my-1 text-sm font-medium
-                            focus:bg-opacity-80 focus:text-opacity-90
-                            hover:bg-opacity-80 // Ensure consistency on hover for individual items as well
-                            transition-all duration-150
-                          `}
-                        >
-                          {status}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Refresh Button */}
+              <div className="flex gap-2 w-full sm:w-auto">
                 <Button
                   onClick={handleRefresh}
-                  disabled={loading}
+                  disabled={loading || refreshing}
                   variant="outline"
-                  className="w-full sm:w-auto h-10 px-4 py-2 hover:bg-primary hover:text-primary-foreground transition-colors"
-                  aria-label="Refresh order list"
+                  className="flex-1 sm:flex-none"
                 >
                   <RefreshCw
-                    className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
+                    className={`h-5 w-5 mr-2 ${
+                      refreshing ? "animate-spin" : ""
+                    }`}
                   />
                   Refresh
+                </Button>
+                <Button
+                  onClick={() => setShowUploadDialog(true)}
+                  className="flex-1 sm:flex-none"
+                >
+                  <Upload className="h-5 w-5 mr-2" />
+                  Upload New
                 </Button>
               </div>
             </div>
           </Card>
         </motion.div>
 
-        {/* Error Message */}
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35, duration: 0.5 }}
-          >
-            <Card className="border-destructive bg-destructive/10 mb-6">
-              <CardContent className="pt-6 flex items-center gap-2">
-                <Info className="w-5 h-5 text-destructive" />
-                <p className="text-destructive-foreground">{error}</p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
+        {/* Image Gallery */}
+        <AnimatePresence mode="wait">
+          {loading ? (
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6"
+            >
+              {[...Array(10)].map((_, idx) => (
+                <Skeleton key={idx} className="h-64 w-full rounded-xl" />
+              ))}
+            </motion.div>
+          ) : filteredImages.length === 0 ? (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <Card>
+                <CardContent className="p-10 text-center text-muted-foreground text-lg">
+                  No images found. Try uploading new ones or adjusting your
+                  search.
+                </CardContent>
+              </Card>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="gallery"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6"
+            >
+              {filteredImages.map((img, idx) => (
+                <motion.div
+                  key={img.id}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: idx * 0.05 }}
+                >
+                  <Card className="relative group overflow-hidden hover:shadow-lg transition-shadow">
+                    <button
+                      onClick={() => handlePreview(img)}
+                      className="w-full"
+                      aria-label={`Preview ${img.id}`}
+                    >
+                      <img
+                        src={img.url}
+                        alt={`${img.type} image ${img.id}`}
+                        className="rounded-t-xl w-full h-auto group-hover:scale-105 transition-transform duration-300 p-4"
+                      />
+                    </button>
+                    <CardHeader className="p-4">
+                      <div className="flex items-center justify-between">
+                        <Badge variant="secondary" className="uppercase">
+                          {img.type}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(img.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="flex justify-end p-4 pt-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handlePreview(img)}
+                        className="mr-2 hover:bg-accent"
+                        aria-label="Preview image"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEdit(img)}
+                        className="mr-2 hover:bg-accent"
+                        aria-label="Edit image"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(img.id)}
+                        disabled={deletingImage && imageToDelete === img.id}
+                        className="hover:bg-destructive/10 hover:text-destructive"
+                        aria-label="Delete image"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Orders Table */}
-        {loading && !error ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.5 }}
-          >
-            <Card className="border-border shadow-sm">
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>User Name</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Order Status</TableHead>
-                      <TableHead>Payment Status</TableHead>
-                      <TableHead>Shipping City</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {[...Array(5)].map((_, index) => (
-                      <TableRow key={index}>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-8 w-32 rounded-full" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-8 w-32 rounded-full" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-28" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-28" />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Skeleton className="h-8 w-16 ml-auto" />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ) : filteredAndPaginatedOrders.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.5 }}
-          >
-            <Card className="border-border">
-              <CardContent className="pt-6">
-                <div className="text-center py-12">
-                  <ShoppingCart className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-foreground mb-2">
-                    No orders found
-                  </h3>
-                  <p className="text-muted-foreground mb-4">
-                    Adjust your search or filters to find what you're looking for.
-                  </p>
+        {/* Upload Dialog */}
+        <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <Upload className="mr-2 h-6 w-6" />
+                Upload New Image
+              </DialogTitle>
+            </DialogHeader>
+            <div
+              ref={dropRef}
+              className={cn(
+                "border-2 border-dashed rounded-lg p-6 text-center transition-colors",
+                isDragging ? "border-primary bg-primary/10" : "border-border"
+              )}
+            >
+              <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+              <Label htmlFor="file-upload" className="cursor-pointer">
+                <p className="text-lg font-medium text-foreground mb-2">
+                  Drag and drop an image here
+                </p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  or click to select
+                </p>
+              </Label>
+              <Input
+                id="file-upload"
+                type="file"
+                accept="image/*"
+                onChange={onFileChange}
+                className="mb-4"
+              />
+              {file && (
+                <p className="text-sm text-muted-foreground mb-4">
+                  Selected: {file.name}
+                </p>
+              )}
+              <Select
+                value={uploadType}
+                onValueChange={(v) => setUploadType(v as ImageType)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {IMAGE_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t.charAt(0) + t.slice(1).toLowerCase()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowUploadDialog(false)}
+                disabled={uploadLoading}
+              >
+                Cancel
+              </Button>
+              <Button onClick={onUpload} disabled={uploadLoading || !file}>
+                {uploadLoading ? (
+                  <>
+                    <LoadingSpinner className="h-4 w-4 mr-2" />
+                    Uploading...
+                  </>
+                ) : (
+                  "Upload"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Dialog */}
+        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <Edit2 className="mr-2 h-6 w-6" />
+                Edit Image Type
+              </DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+              <Label htmlFor="edit-type">Image Type</Label>
+              <Select
+                value={editType}
+                onValueChange={(v) => setEditType(v as ImageType)}
+              >
+                <SelectTrigger id="edit-type">
+                  <SelectValue placeholder="Select Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {IMAGE_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t.charAt(0) + t.slice(1).toLowerCase()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowEditDialog(false)}
+                disabled={editLoading}
+              >
+                Cancel
+              </Button>
+              <Button onClick={onSaveEdit} disabled={editLoading}>
+                {editLoading ? (
+                  <>
+                    <LoadingSpinner className="h-4 w-4 mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog
+          open={showDeleteConfirmation}
+          onOpenChange={setShowDeleteConfirmation}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <Trash2 className="mr-2 h-6 w-6 text-destructive" />
+                Delete Image
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-muted-foreground">
+              Are you sure you want to permanently delete this image? This
+              action cannot be undone.
+            </p>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={cancelDelete}
+                disabled={deletingImage}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={executeDelete}
+                disabled={deletingImage}
+              >
+                {deletingImage ? (
+                  <>
+                    <LoadingSpinner className="h-4 w-4 mr-2" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Preview Dialog */}
+        <Dialog
+          open={!!previewImage}
+          onOpenChange={() => setPreviewImage(null)}
+        >
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>{previewImage?.type} Image Preview</DialogTitle>
+            </DialogHeader>
+            {previewImage && (
+              <div className="flex flex-col items-center">
+                <img
+                  src={previewImage.url}
+                  alt={`${previewImage.type} image ${previewImage.id}`}
+                  className="max-h-[60vh] w-auto rounded-lg"
+                />
+                <div className="mt-4 w-full flex justify-between text-sm text-muted-foreground">
+                  <span>ID: {previewImage.id}</span>
+                  <span>
+                    Created: {new Date(previewImage.createdAt).toLocaleString()}
+                  </span>
                 </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.5 }}
-          >
-            <Card className="border-border shadow-sm">
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>User Name</TableHead>
-                      <TableHead
-                        className="cursor-pointer hover:text-foreground"
-                        onClick={() => handleSort("totalAmount")}
-                      >
-                        Amount {renderSortIcon("totalAmount")}
-                      </TableHead>
-                      <TableHead
-                        className="cursor-pointer hover:text-foreground"
-                        onClick={() => handleSort("status")}
-                      >
-                        Order Status {renderSortIcon("status")}
-                      </TableHead>
-                      <TableHead
-                        className="cursor-pointer hover:text-foreground"
-                        onClick={() => handleSort("paymentStatus")}
-                      >
-                        Payment Status {renderSortIcon("paymentStatus")}
-                      </TableHead>
-                      <TableHead>Shipping City</TableHead>
-                      <TableHead
-                        className="cursor-pointer hover:text-foreground"
-                        onClick={() => handleSort("createdAt")}
-                      >
-                        Date {renderSortIcon("createdAt")}
-                      </TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredAndPaginatedOrders.map((order) => (
-                      <TableRow key={order.id}>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {order.user?.name || "N/A"}
-                        </TableCell>
-                        <TableCell className="text-foreground font-semibold">
-                          {formatCurrency(order.totalAmount)}
-                        </TableCell>
-                        {/* Order Status Dropdown */}
-                        <TableCell>
-                          <div className="relative flex items-center w-[140px]">
-                            <Select
-                              value={order.status}
-                              onValueChange={(newStatus: OrderStatus) =>
-                                handleUpdateStatus(
-                                  order.id,
-                                  "status",
-                                  newStatus
-                                )
-                              }
-                              disabled={
-                                updatingOrderStatusId === order.id || loading
-                              }
-                            >
-                              <SelectTrigger
-                                className={`
-                                  w-full h-8 text-sm font-medium rounded-full px-3 py-1
-                                  ${orderStatusColors[order.status]}
-                                  border-none focus:ring-2 focus:ring-offset-2 focus:ring-primary
-                                  transition-all duration-200
-                                  ${
-                                    updatingOrderStatusId === order.id
-                                      ? "opacity-70 cursor-not-allowed"
-                                      : ""
-                                  }
-                                  hover:opacity-90 // Apply hover effect that keeps the color but makes it slightly transparent
-                                `}
-                                aria-label={`Order status for order ${order.id}`}
-                              >
-                                <SelectValue
-                                  className="text-current" // Ensure text color is from the statusColors map
-                                  placeholder="Select Status"
-                                />
-                                {updatingOrderStatusId === order.id && (
-                                  <LoadingSpinner className="h-3 w-3 text-current ml-2" />
-                                )}
-                              </SelectTrigger>
-                              <SelectContent className="rounded-lg shadow-lg bg-popover">
-                                {orderStatusOptions.map((status) => (
-                                  <SelectItem
-                                    key={status}
-                                    value={status}
-                                    className={`
-                                      ${orderStatusColors[status]}
-                                      rounded-sm my-1 text-sm font-medium
-                                      focus:bg-opacity-80 focus:text-opacity-90
-                                      hover:bg-opacity-80
-                                      transition-all duration-150
-                                    `}
-                                  >
-                                    {status}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </TableCell>
-                        {/* Payment Status Dropdown */}
-                        <TableCell>
-                          <div className="relative flex items-center w-[140px]">
-                            <Select
-                              value={order.paymentStatus}
-                              onValueChange={(newStatus: PaymentStatus) =>
-                                handleUpdateStatus(
-                                  order.id,
-                                  "paymentStatus",
-                                  newStatus
-                                )
-                              }
-                              disabled={
-                                updatingPaymentStatusId === order.id || loading
-                              }
-                            >
-                              <SelectTrigger
-                                className={`
-                                  w-full h-8 text-sm font-medium rounded-full px-3 py-1
-                                  ${paymentStatusColors[order.paymentStatus]}
-                                  border-none focus:ring-2 focus:ring-offset-2 focus:ring-primary
-                                  transition-all duration-200
-                                  ${
-                                    updatingPaymentStatusId === order.id
-                                      ? "opacity-70 cursor-not-allowed"
-                                      : ""
-                                  }
-                                  hover:opacity-90 // Apply hover effect that keeps the color but makes it slightly transparent
-                                `}
-                                aria-label={`Payment status for order ${order.id}`}
-                              >
-                                <SelectValue
-                                  className="text-current" // Ensure text color is from the statusColors map
-                                  placeholder="Select Status"
-                                />
-                                {updatingPaymentStatusId === order.id && (
-                                  <LoadingSpinner className="h-3 w-3 text-current ml-2" />
-                                )}
-                              </SelectTrigger>
-                              <SelectContent className="rounded-lg shadow-lg bg-popover">
-                                {paymentStatusOptions.map((status) => (
-                                  <SelectItem
-                                    key={status}
-                                    value={status}
-                                    className={`
-                                      ${paymentStatusColors[status]}
-                                      rounded-sm my-1 text-sm font-medium
-                                      focus:bg-opacity-80 focus:text-opacity-90
-                                      hover:bg-opacity-80 // Ensure consistency on hover for individual items as well
-                                      transition-all duration-150
-                                    `}
-                                  >
-                                    {status}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {order.shippingAddress?.city || "N/A"}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          <div className="flex items-center space-x-1">
-                            <span>{formatDate(order.createdAt)}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleViewDetails(order.id)}
-                            className="hover:text-primary hover:bg-primary/10 border-border"
-                            disabled={loading}
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-
-        {/* Pagination */}
-        {filteredAndPaginatedOrders.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5, duration: 0.5 }}
-            className="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4"
-          >
-            <Button
-              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1 || loading}
-              variant="outline"
-              size="sm"
-              aria-label="Previous page"
-            >
-              Previous
-            </Button>
-            <span className="text-muted-foreground text-sm sm:text-base">
-              Page {currentPage} of {totalPages}
-            </span>
-            <Button
-              onClick={() =>
-                setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-              }
-              disabled={currentPage === totalPages || loading}
-              variant="outline"
-              size="sm"
-              aria-label="Next page"
-            >
-              Next
-            </Button>
-          </motion.div>
-        )}
+              </div>
+            )}
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">Close</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
 };
 
-export default AdminOrderManagement;
+export default AllImagesPage;

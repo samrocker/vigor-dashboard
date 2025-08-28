@@ -43,7 +43,6 @@ import {
   RefreshCw,
   Edit,
   Eye,
-  FileImage, // CHANGE START: Added Icon
 } from "lucide-react";
 import {
   Select,
@@ -52,7 +51,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-// CHANGE END
 
 function formatDate(dateString: string) {
   const date = new Date(dateString);
@@ -70,7 +68,7 @@ const AllSubCategoryPage = () => {
   const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
-  // CHANGE START: Add imageFile to createForm state
+  // imageFile is included in both create and update forms
   const [createForm, setCreateForm] = useState<{
     name: string;
     description: string;
@@ -82,38 +80,33 @@ const AllSubCategoryPage = () => {
     categoryId: "",
     imageFile: null,
   });
-  // CHANGE END
 
-  const [updateForm, setUpdateForm] = useState({
+  const [updateForm, setUpdateForm] = useState<{
+    id: string;
+    name: string;
+    description: string;
+    imageFile: File | null;
+  }>({
     id: "",
     name: "",
     description: "",
+    imageFile: null,
   });
+
   const [isCreating, setIsCreating] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [subCategoryToDeleteId, setSubCategoryToDeleteId] = useState<
-    string | null
-  >(null);
+  const [subCategoryToDeleteId, setSubCategoryToDeleteId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
-
   const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilterId, setCategoryFilterId] = useState<string | "all">(
-    "all"
-  );
+  const [categoryFilterId, setCategoryFilterId] = useState<string | "all">("all");
   const [sortKey, setSortKey] = useState<keyof SubCategory | null>("createdAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-  const [createFormErrors, setCreateFormErrors] = useState<{
-    name?: string;
-    categoryId?: string;
-  }>({});
-  const [updateFormErrors, setUpdateFormErrors] = useState<{ name?: string }>(
-    {}
-  );
-
+  const [createFormErrors, setCreateFormErrors] = useState<{ name?: string; categoryId?: string }>({});
+  const [updateFormErrors, setUpdateFormErrors] = useState<{ name?: string }>({});
   const router = useRouter();
 
   useEffect(() => {
@@ -123,9 +116,7 @@ const AllSubCategoryPage = () => {
 
   const fetchCategories = async () => {
     try {
-      const response = await axiosInstance.get<CategoriesApiResponse>(
-        "/public/category"
-      );
+      const response = await axiosInstance.get<CategoriesApiResponse>("/public/category");
       if (response.data.status === "success" && response.data.data) {
         setCategories(response.data.data.categories || []);
       }
@@ -138,9 +129,7 @@ const AllSubCategoryPage = () => {
   const fetchSubCategoriesData = async () => {
     setLoading(true);
     try {
-      const response = await axiosInstance.get<SubCategoriesApiResponse>(
-        "/public/sub-category"
-      );
+      const response = await axiosInstance.get<SubCategoriesApiResponse>("/public/sub-category");
       if (response.data.status === "success" && response.data.data) {
         setAllSubCategories(response.data.data?.subCategories || []);
         setTotal(response.data.data?.total || 0);
@@ -149,8 +138,7 @@ const AllSubCategoryPage = () => {
       }
     } catch (err: any) {
       toast.error(
-        err.message ||
-          "An unexpected error occurred while fetching subcategories."
+        err.message || "An unexpected error occurred while fetching subcategories."
       );
     } finally {
       setLoading(false);
@@ -160,10 +148,8 @@ const AllSubCategoryPage = () => {
   function validateSubCategoryForm(name: string, categoryId?: string) {
     const errors: { name?: string; categoryId?: string } = {};
     if (!name.trim()) errors.name = "Name is required";
-    else if (name.trim().length < 2)
-      errors.name = "Name must be at least 2 characters";
-    else if (name.trim().length > 100)
-      errors.name = "Name must be at most 100 characters";
+    else if (name.trim().length < 2) errors.name = "Name must be at least 2 characters";
+    else if (name.trim().length > 100) errors.name = "Name must be at most 100 characters";
     if (typeof categoryId !== "undefined") {
       if (!categoryId.trim()) errors.categoryId = "Category is required";
     }
@@ -178,28 +164,20 @@ const AllSubCategoryPage = () => {
         (subCategory) =>
           subCategory.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           (subCategory.description &&
-            subCategory.description
-              .toLowerCase()
-              .includes(searchQuery.toLowerCase()))
+            subCategory.description.toLowerCase().includes(searchQuery.toLowerCase()))
       );
     }
-
     if (categoryFilterId !== "all") {
       currentSubCategories = currentSubCategories.filter(
         (subCategory) => subCategory.categoryId === categoryFilterId
       );
     }
-
     if (sortKey) {
       currentSubCategories = [...currentSubCategories].sort((a, b) => {
         const aValue = a[sortKey];
         const bValue = b[sortKey];
-
-        if (aValue === null || aValue === undefined)
-          return sortDirection === "asc" ? -1 : 1;
-        if (bValue === null || bValue === undefined)
-          return sortDirection === "asc" ? 1 : -1;
-
+        if (aValue === null || aValue === undefined) return sortDirection === "asc" ? -1 : 1;
+        if (bValue === null || bValue === undefined) return sortDirection === "asc" ? 1 : -1;
         if (typeof aValue === "string" && typeof bValue === "string") {
           return sortDirection === "asc"
             ? aValue.localeCompare(bValue)
@@ -213,11 +191,10 @@ const AllSubCategoryPage = () => {
         return 0;
       });
     }
-
     return currentSubCategories;
   }, [allSubCategories, searchQuery, categoryFilterId, sortKey, sortDirection]);
 
-  // CHANGE START: Update state cleanup to include imageFile
+  // Reset state and file on close
   const handleCreateDialogChange = (open: boolean) => {
     setIsCreateDialogOpen(open);
     if (!open) {
@@ -231,16 +208,14 @@ const AllSubCategoryPage = () => {
       setCreateFormErrors({});
     }
   };
-  // CHANGE END
-
   const handleUpdateDialogChange = (open: boolean) => {
     setIsUpdateDialogOpen(open);
     if (!open) {
-      setUpdateForm({ id: "", name: "", description: "" });
+      setUpdateForm({ id: "", name: "", description: "", imageFile: null });
       setIsUpdating(false);
+      setUpdateFormErrors({});
     }
   };
-
   const handleDeleteDialogChange = (open: boolean) => {
     setIsDeleteDialogOpen(open);
     if (!open) {
@@ -249,14 +224,11 @@ const AllSubCategoryPage = () => {
     }
   };
 
-  // CHANGE START: Major update to handleCreate to support image upload
+  // --- CREATE (imageId logic) ---
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateFormErrors({});
-    const errors = validateSubCategoryForm(
-      createForm.name,
-      createForm.categoryId
-    );
+    const errors = validateSubCategoryForm(createForm.name, createForm.categoryId);
     if (Object.keys(errors).length > 0) {
       setCreateFormErrors(errors);
       return;
@@ -264,44 +236,35 @@ const AllSubCategoryPage = () => {
     setIsCreating(true);
 
     try {
-      // Step 1: Create the subcategory first
-      const subCategoryResponse = await axiosInstance.post(
-        "/admin/sub-category",
-        {
-          name: createForm.name,
-          description: createForm.description,
-          categoryId: createForm.categoryId,
+      let imageId = "";
+      if (createForm.imageFile) {
+        const formData = new FormData();
+        formData.append("image", createForm.imageFile);
+        const imageRes = await axiosInstance.post("/admin/image", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        if (
+          imageRes?.data?.status === "success" &&
+          imageRes?.data?.data?.image?.id
+        ) {
+          imageId = imageRes.data.data.image.id;
+        } else {
+          toast.error(imageRes?.data?.message || "Failed to upload image");
+          setIsCreating(false);
+          return;
         }
-      );
-
+      }
+      const subCategoryResponse = await axiosInstance.post("/admin/sub-category", {
+        name: createForm.name,
+        description: createForm.description,
+        categoryId: createForm.categoryId,
+        imageId,
+      });
       if (
         subCategoryResponse.data.status === "success" &&
         subCategoryResponse.data.data
       ) {
-        const newSubCategoryId = subCategoryResponse.data.data.subCategory.id;
-
-        // Step 2: If an image is selected, upload it
-        if (createForm.imageFile && newSubCategoryId) {
-          const formData = new FormData();
-          formData.append("image", createForm.imageFile);
-          formData.append("subCategoryId", newSubCategoryId); // Assuming the key is subCategoryId
-
-          try {
-            await axiosInstance.post("/admin/image", formData, {
-              headers: { "Content-Type": "multipart/form-data" },
-            });
-            toast.success("Subcategory and image uploaded successfully!");
-          } catch (imageError: any) {
-            console.error("Image upload failed:", imageError);
-            toast.warning(
-              "Subcategory was created, but the image upload failed. You can add it later."
-            );
-          }
-        } else {
-          toast.success("Subcategory created successfully!");
-        }
-
-        // Reset form, close dialog, and refresh data
+        toast.success("Subcategory created successfully!");
         handleCreateDialogChange(false);
         fetchSubCategoriesData();
       } else {
@@ -315,26 +278,25 @@ const AllSubCategoryPage = () => {
         err?.response?.data?.error ||
         err?.message ||
         "Something went wrong. Please try again.";
-      if (apiMessage.toLowerCase().includes("duplicate")) {
-        apiMessage =
-          "A subcategory with this name already exists in this category.";
+      if (typeof apiMessage === "string" && apiMessage.toLowerCase().includes("duplicate")) {
+        apiMessage = "A subcategory with this name already exists in this category.";
       }
       toast.error(apiMessage);
     } finally {
       setIsCreating(false);
     }
   };
-  // CHANGE END
 
+  // --- EDIT (imageId logic) ---
   const openUpdateDialog = (subCategory: SubCategory) => {
     setUpdateForm({
       id: subCategory.id,
       name: subCategory.name,
       description: subCategory.description || "",
+      imageFile: null,
     });
     setIsUpdateDialogOpen(true);
   };
-
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setUpdateFormErrors({});
@@ -345,13 +307,31 @@ const AllSubCategoryPage = () => {
     }
     setIsUpdating(true);
     try {
-      const response = await axiosInstance.patch(
-        `/admin/sub-category/${updateForm.id}`,
-        {
-          name: updateForm.name,
-          description: updateForm.description,
+      let imageId = "";
+      if (updateForm.imageFile) {
+        const formData = new FormData();
+        formData.append("image", updateForm.imageFile);
+        const imageRes = await axiosInstance.post("/admin/image", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        if (
+          imageRes?.data?.status === "success" &&
+          imageRes?.data?.data?.image?.id
+        ) {
+          imageId = imageRes.data.data.image.id;
+        } else {
+          toast.error(imageRes?.data?.message || "Failed to upload image");
+          setIsUpdating(false);
+          return;
         }
-      );
+      }
+      const patchBody: any = {
+        name: updateForm.name,
+        description: updateForm.description,
+      };
+      if (imageId) patchBody.imageId = imageId;
+
+      const response = await axiosInstance.patch(`/admin/sub-category/${updateForm.id}`, patchBody);
       if (response.data.status === "success") {
         setAllSubCategories(
           allSubCategories.map((subCat) =>
@@ -375,9 +355,8 @@ const AllSubCategoryPage = () => {
         err?.response?.data?.error ||
         err?.message ||
         "Something went wrong. Please try again.";
-      if (apiMessage.toLowerCase().includes("duplicate")) {
-        apiMessage =
-          "A subcategory with this name already exists in this category.";
+      if (typeof apiMessage === "string" && apiMessage.toLowerCase().includes("duplicate")) {
+        apiMessage = "A subcategory with this name already exists in this category.";
       }
       toast.error(apiMessage);
     } finally {
@@ -392,7 +371,6 @@ const AllSubCategoryPage = () => {
 
   const handleConfirmDelete = async () => {
     if (!subCategoryToDeleteId) return;
-
     setIsDeleting(subCategoryToDeleteId);
     try {
       const response = await axiosInstance.delete(
@@ -400,9 +378,7 @@ const AllSubCategoryPage = () => {
       );
       if (response.data.status === "success") {
         setAllSubCategories(
-          allSubCategories.filter(
-            (subCat) => subCat.id !== subCategoryToDeleteId
-          )
+          allSubCategories.filter((subCat) => subCat.id !== subCategoryToDeleteId)
         );
         setTotal(total - 1);
         toast.success("SubCategory deleted successfully");
@@ -410,10 +386,12 @@ const AllSubCategoryPage = () => {
         toast.error(response.data.message || "Failed to delete subcategory");
       }
     } catch (err: any) {
-      toast.error(
-        err.message ||
-          "An unexpected error occurred while deleting subcategory."
-      );
+      const apiMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "An unexpected error occurred while deleting subcategory.";
+      toast.error(apiMessage);
     } finally {
       setIsDeleting(null);
       setIsDeleteDialogOpen(false);
@@ -443,8 +421,8 @@ const AllSubCategoryPage = () => {
     router.push(`/subcategory/${subCategoryId}`);
   };
 
+  // --- LOADING SKELETON ---
   if (loading) {
-    // ... Skeleton loading state remains the same
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -538,6 +516,7 @@ const AllSubCategoryPage = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* --------- Header --------- */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -625,7 +604,6 @@ const AllSubCategoryPage = () => {
                         maxLength={500}
                       />
                     </div>
-                    {/* CHANGE START: Add file input for image */}
                     <div>
                       <label
                         htmlFor="createImage"
@@ -649,7 +627,6 @@ const AllSubCategoryPage = () => {
                         disabled={isCreating}
                       />
                     </div>
-                    {/* CHANGE END */}
                     <div>
                       <label
                         htmlFor="createCategoryId"
@@ -721,6 +698,7 @@ const AllSubCategoryPage = () => {
         </div>
       </motion.div>
 
+      {/* -------- Main content area -------- */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -747,7 +725,6 @@ const AllSubCategoryPage = () => {
             </CardContent>
           </Card>
         </motion.div>
-
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -811,7 +788,6 @@ const AllSubCategoryPage = () => {
             </div>
           </Card>
         </motion.div>
-
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -820,14 +796,14 @@ const AllSubCategoryPage = () => {
           {filteredAndSortedSubCategories.length === 0 && !loading ? (
             <Card className="border-border">
               <CardContent className="pt-6">
-                <div className="text-center py-12">
+                <div className="text-center py-12 flex-center flex-col">
                   <FolderOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-foreground mb-2">
                     No subcategories found
                   </h3>
                   <span className="text-muted-foreground mb-4">
-                    Adjust your search or filters, or get started by creating
-                    your first subcategory.
+                    Adjust your search or filters, or get started by creating your
+                    first subcategory.
                   </span>
                   <Button
                     onClick={() => setIsCreateDialogOpen(true)}
@@ -909,9 +885,7 @@ const AllSubCategoryPage = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => handleDelete(subcategory.id)}
-                              disabled={
-                                isDeleting === subcategory.id || loading
-                              }
+                              disabled={isDeleting === subcategory.id || loading}
                               className="hover:bg-destructive/10 hover:border-destructive hover:text-destructive border-border"
                             >
                               {isDeleting === subcategory.id ? (
@@ -938,6 +912,7 @@ const AllSubCategoryPage = () => {
         </motion.div>
       </div>
 
+      {/* --- Edit Dialog --- */}
       <Dialog open={isUpdateDialogOpen} onOpenChange={handleUpdateDialogChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -983,6 +958,27 @@ const AllSubCategoryPage = () => {
                 maxLength={500}
               />
             </div>
+            <div>
+              <label
+                htmlFor="updateImage"
+                className="block text-sm font-medium text-foreground mb-1"
+              >
+                Replace Image
+              </label>
+              <Input
+                id="updateImage"
+                type="file"
+                accept="image/*"
+                onChange={(e) =>
+                  setUpdateForm({
+                    ...updateForm,
+                    imageFile: e.target.files ? e.target.files[0] : null,
+                  })
+                }
+                className="h-fit file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                disabled={isUpdating}
+              />
+            </div>
             <DialogFooter>
               <Button
                 type="button"
@@ -1007,6 +1003,7 @@ const AllSubCategoryPage = () => {
         </DialogContent>
       </Dialog>
 
+      {/* --- Delete Dialog --- */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={handleDeleteDialogChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -1014,8 +1011,8 @@ const AllSubCategoryPage = () => {
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-muted-foreground">
-              Are you sure you want to delete this subcategory? This action
-              cannot be undone.
+              Are you sure you want to delete this subcategory? This action cannot
+              be undone.
             </p>
             <DialogFooter>
               <Button

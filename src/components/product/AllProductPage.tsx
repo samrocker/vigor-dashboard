@@ -20,7 +20,7 @@ import {
   CheckCircle,
   XCircle,
   X,
-  UploadCloud, // Added for image upload UI
+  UploadCloud,
 } from "lucide-react";
 import { getAccessToken } from "@/lib/auth";
 import { ApiResponse, axiosInstance } from "@/lib/axios";
@@ -526,6 +526,7 @@ const AllProductPage = () => {
     e.preventDefault();
     setCreateFormErrors(initialFormErrors);
 
+    // The correction is on this line: createform -> createForm
     const { errors, isValid } = validateForm(createForm);
     if (!isValid) {
       setCreateFormErrors(errors);
@@ -536,6 +537,49 @@ const AllProductPage = () => {
     setIsCreating(true);
 
     try {
+      let imageIds: string[] = [];
+
+      // Step 1: Upload images if any are selected
+      if (createFormImages.length > 0) {
+        toast.info("Uploading product images...");
+        const formData = new FormData();
+        createFormImages.forEach((imageFile) => {
+          formData.append("images", imageFile); // Note: API expects 'images' key
+        });
+
+        try {
+          const imageResponse = await axiosInstance.post(
+            "/admin/image/multiple",
+            formData,
+            {
+              headers: { "Content-Type": "multipart/form-data" },
+            }
+          );
+          if (
+            imageResponse.data.status === "success" &&
+            imageResponse.data.data.images
+          ) {
+            imageIds = imageResponse.data.data.images.map(
+              (img: { id: string }) => img.id
+            );
+            toast.success("Images uploaded successfully!");
+          } else {
+            throw new Error(
+              imageResponse.data.message || "Image upload failed silently."
+            );
+          }
+        } catch (imgErr: any) {
+          toast.error(
+            `Failed to upload images: ${
+              imgErr.response?.data?.message || "Please try again later."
+            }`
+          );
+          setIsCreating(false);
+          return; // Stop the process if image upload fails
+        }
+      }
+
+      // Step 2: Create the product with image IDs
       const additionalDetailsObject: AdditionalDetails = {};
       createForm.additionalDetails.forEach((detail) => {
         if (detail.key.trim() && detail.value.trim()) {
@@ -552,6 +596,10 @@ const AllProductPage = () => {
         additionalDetails: additionalDetailsObject,
       };
 
+      if (imageIds.length > 0) {
+        payload.imageIds = imageIds;
+      }
+
       if (
         createForm.subCategoryId !== null &&
         createForm.subCategoryId !== "none"
@@ -559,39 +607,19 @@ const AllProductPage = () => {
         payload.subCategoryId = createForm.subCategoryId;
       }
 
-      const response = await axiosInstance.post("/admin/product", payload);
+      const productResponse = await axiosInstance.post(
+        "/admin/product",
+        payload
+      );
 
-      if (response.data.status === "success" && response.data.data.product) {
-        const createdProduct = response.data.data.product;
+      if (productResponse.data.status === "success") {
         toast.success("Product created successfully!");
-
-        if (createFormImages.length > 0) {
-          const formData = new FormData();
-          formData.append("productId", createdProduct.id);
-          createFormImages.forEach((imageFile) => {
-            formData.append("images", imageFile);
-          });
-
-          try {
-            toast.info("Uploading product images...");
-            await axiosInstance.post("/admin/image/multiple", formData, {
-              headers: { "Content-Type": "multipart/form-data" },
-            });
-            toast.success("Images uploaded successfully!");
-          } catch (imgErr: any) {
-            console.error("Image upload failed:", imgErr);
-            toast.error(
-              `Product created, but failed to upload images: ${
-                imgErr.response?.data?.message || "Please try again later."
-              }`
-            );
-          }
-        }
-
         setIsCreateDialogOpen(false);
         fetchAllProducts();
       } else {
-        toast.error(response.data.message || "Failed to create product.");
+        toast.error(
+          productResponse.data.message || "Failed to create product."
+        );
       }
     } catch (err: any) {
       const apiError = err.response?.data;

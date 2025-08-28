@@ -36,18 +36,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
 import {
-  FolderOpen, // For category main icon
-  Info, // General information
-  Calendar, // For dates
-  ArrowLeft, // For back button
-  Package, // For products section (though not directly used in this view for products, kept for consistency if needed)
-  Eye, // For view details
-  Plus, // For add image/subcategory
-  Trash2, // For delete image/subcategory
-  ImageIcon, // For images section
-  CheckCircle, // For true boolean status
-  XCircle, // For false boolean status
-  Edit, // For edit icon
+  FolderOpen,
+  Info,
+  ArrowLeft,
+  Eye,
+  Plus,
+  Trash2,
+  ImageIcon,
+  Edit,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -175,16 +171,12 @@ const CategoryDetailsPage = () => {
   >(null);
   const [isDeletingSubCategory, setIsDeletingSubCategory] = useState(false);
 
-  // Image CRUD states (adapted for Category page)
-  const [isUploadImageDialogOpen, setIsUploadImageDialogOpen] = useState(false);
-  const [uploadImageForm, setUploadImageForm] = useState<{
-    image: File | null;
-    categoryId: string | null; // Auto-associate with current category
-  }>({
+  // State for changing the category image
+  const [isChangeImageDialogOpen, setIsChangeImageDialogOpen] = useState(false);
+  const [changeImageForm, setChangeImageForm] = useState<{ image: File | null }>({
     image: null,
-    categoryId: categoryId,
   });
-  const [isUploadImageLoading, setIsUploadImageLoading] = useState(false);
+  const [isUpdatingImage, setIsUpdatingImage] = useState(false);
 
   const [isDeleteImageDialogOpen, setIsDeleteImageDialogOpen] = useState(false);
   const [imageToDeleteId, setImageToDeleteId] = useState<string | null>(null);
@@ -258,59 +250,69 @@ const CategoryDetailsPage = () => {
 
   // --- Image CRUD Handlers ---
 
-  const handleOpenUploadImageDialog = () => {
-    setUploadImageForm((prev) => ({
-      ...prev,
-      image: null,
-      categoryId: categoryId,
-    }));
-    setIsUploadImageDialogOpen(true);
+  const handleOpenChangeImageDialog = () => {
+    setChangeImageForm({ image: null }); // Reset form
+    setIsChangeImageDialogOpen(true);
   };
-
-  const handleUploadImage = async (e: React.FormEvent) => {
+  
+  const handleUpdateCategoryImage = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsUploadImageLoading(true);
+    setIsUpdatingImage(true);
     setError(null);
-
-    if (!uploadImageForm.image) {
-      toast.error("Image file is required.");
-      setIsUploadImageLoading(false);
+  
+    if (!changeImageForm.image) {
+      toast.error("An image file is required.");
+      setIsUpdatingImage(false);
       return;
     }
-
-    const formData = new FormData();
-    formData.append("image", uploadImageForm.image);
-    formData.append("categoryId", categoryId);
-
+  
     try {
-      const response = await axiosInstance.post("/admin/image", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
-
-      if (response.data.status === "success") {
-        toast.success("Image uploaded successfully!");
-        setIsUploadImageDialogOpen(false);
-        setUploadImageForm({
-          image: null,
-          categoryId: categoryId,
-        });
-        fetchCategoryDetails(categoryId); // Re-fetch category details to update images list
-      } else {
-        toast.error(response.data.message || "Failed to upload image.");
+      // --- Step 1: Upload the image to the /admin/image endpoint ---
+      const formData = new FormData();
+      formData.append("image", changeImageForm.image);
+  
+      const imageUploadResponse = await axiosInstance.post(
+        "/admin/image",
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+  
+      if (imageUploadResponse.data.status !== "success" || !imageUploadResponse.data.data?.image?.id) {
+        throw new Error(imageUploadResponse.data.message || "Failed to upload image.");
       }
+  
+      const newImageId = imageUploadResponse.data.data.image.id;
+      toast.info("Image uploaded, now updating category...");
+  
+      // --- Step 2: Update the category with the new imageId ---
+      const categoryUpdateResponse = await axiosInstance.patch(
+        `/admin/category/${categoryId}`,
+        {
+          imageId: newImageId,
+          // Optional: Send current name/description to prevent accidental clearing if API requires them
+          name: category?.name,
+          description: category?.description || "",
+        }
+      );
+  
+      if (categoryUpdateResponse.data.status === "success") {
+        toast.success("Category image updated successfully!");
+        setIsChangeImageDialogOpen(false);
+        fetchCategoryDetails(categoryId); // Re-fetch all data to show the new image
+      } else {
+        throw new Error(categoryUpdateResponse.data.message || "Failed to associate image with category.");
+      }
+  
     } catch (err: any) {
-      setError(err.message || "An unexpected error occurred during upload.");
-      if (err.response && err.response.status === 413) {
-        toast.error(
-          "Image too large. Please upload an image smaller than 5MB."
-        );
-      } else {
-        toast.error(err.response?.data?.message || "Error uploading image.");
-      }
+      const errorMessage = err.response?.data?.message || err.message || "An unexpected error occurred.";
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
-      setIsUploadImageLoading(false);
+      setIsUpdatingImage(false);
     }
   };
 
@@ -452,22 +454,18 @@ const CategoryDetailsPage = () => {
         toast.success("Subcategory deleted successfully!");
         setIsDeleteSubCategoryDialogOpen(false);
         setSubCategoryToDeleteId(null);
-        fetchCategoryDetails(categoryId); // Re-fetch category details to update list
+        fetchCategoryDetails(categoryId);
       } else {
         toast.error(response.data.message || "Failed to delete subcategory.");
       }
     } catch (err: any) {
-      setError(
-        err.message ||
-          "An unexpected error occurred during subcategory deletion."
-      );
       toast.error(err.response?.data?.message || "Error deleting subcategory.");
+      setError(err.response?.data?.message || "An unexpected error occurred.");
     } finally {
       setIsDeletingSubCategory(false);
     }
   };
 
-  // --- Render Loading/Error/Not Found States ---
   if (loadingCategory) {
     return (
       <motion.div
@@ -476,7 +474,6 @@ const CategoryDetailsPage = () => {
         transition={{ duration: 0.5 }}
         className="min-h-screen flex flex-col items-center justify-center bg-background p-4 w-full"
       >
-        {/* Header Section Skeleton */}
         <div className="w-full max-w-7xl mb-6 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Skeleton className="h-12 w-12 rounded-lg" />
@@ -487,10 +484,7 @@ const CategoryDetailsPage = () => {
           </div>
           <Skeleton className="h-10 w-32" />
         </div>
-
-        {/* Main Content Area Skeletons */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-          {/* Category Information Card Skeleton */}
           <Card className="mb-8 shadow-sm">
             <CardHeader>
               <Skeleton className="h-6 w-56 mb-2" />
@@ -516,8 +510,6 @@ const CategoryDetailsPage = () => {
               </div>
             </CardContent>
           </Card>
-
-          {/* Subcategories Section Skeleton */}
           <div className="flex justify-between items-center mb-4">
             <Skeleton className="h-8 w-64" />
             <Skeleton className="h-10 w-32" />
@@ -626,7 +618,6 @@ const CategoryDetailsPage = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header Section */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -650,7 +641,7 @@ const CategoryDetailsPage = () => {
             </div>
             <Button
               variant="outline"
-              onClick={() => router.push('/category')}
+              onClick={() => router.push("/category")}
               className="hover:bg-primary"
               disabled={loadingCategory}
             >
@@ -660,10 +651,7 @@ const CategoryDetailsPage = () => {
           </div>
         </div>
       </motion.div>
-
-      {/* Main Content Area */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Category Information Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -747,6 +735,15 @@ const CategoryDetailsPage = () => {
                             <Eye className="h-4 w-4" />
                           </Button>
                           <Button
+                            variant="secondary"
+                            size="icon"
+                            onClick={handleOpenChangeImageDialog}
+                            className="hover:bg-white/80"
+                            disabled={loadingCategory}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
                             variant="destructive"
                             size="icon"
                             onClick={() =>
@@ -789,17 +786,15 @@ const CategoryDetailsPage = () => {
                     </span>
                   </div>
                 )}
-                {/* Always show upload button, but only if no image exists */}
-                {!category.image && (
-                  <Button
-                    onClick={handleOpenUploadImageDialog}
-                    size="sm"
-                    className="hover:bg-primary w-full"
-                    disabled={loadingCategory || isUploadImageLoading}
-                  >
-                    <Plus className="h-4 w-4 mr-2" /> Upload Image
-                  </Button>
-                )}
+                <Button
+                  onClick={handleOpenChangeImageDialog}
+                  size="sm"
+                  className="hover:bg-primary w-full"
+                  disabled={loadingCategory || isUpdatingImage}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  {category.image ? "Change Image" : "Upload Image"}
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -1083,25 +1078,24 @@ const CategoryDetailsPage = () => {
         </motion.div>
       </div>
 
-      {/* Upload Image Dialog */}
+      {/* Change/Upload Image Dialog */}
       <Dialog
-        open={isUploadImageDialogOpen}
+        open={isChangeImageDialogOpen}
         onOpenChange={(open) => {
-          setIsUploadImageDialogOpen(open);
+          setIsChangeImageDialogOpen(open);
           if (!open) {
-            setIsUploadImageLoading(false);
-            setUploadImageForm({
-              image: null,
-              categoryId: categoryId, // Reset to current category's ID
-            });
+            setIsUpdatingImage(false);
+            setChangeImageForm({ image: null });
           }
         }}
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Upload New Image for {category?.name}</DialogTitle>
+            <DialogTitle>
+              {category.image ? "Change" : "Upload"} Image for {category?.name}
+            </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleUploadImage} className="space-y-4">
+          <form onSubmit={handleUpdateCategoryImage} className="space-y-4">
             <div>
               <label
                 htmlFor="uploadImageFile"
@@ -1114,51 +1108,48 @@ const CategoryDetailsPage = () => {
                 type="file"
                 accept="image/*"
                 onChange={(e) =>
-                  setUploadImageForm({
-                    ...uploadImageForm,
+                  setChangeImageForm({
                     image: e.target.files ? e.target.files[0] : null,
                   })
                 }
-                disabled={isUploadImageLoading || loadingCategory}
+                disabled={isUpdatingImage || loadingCategory}
                 required
               />
             </div>
-            {/* Display message about automatic association with current category */}
             <div className="bg-muted p-3 rounded-md text-sm text-muted-foreground">
-              This image will be automatically associated with the current
-              category:{" "}
+              This image will be uploaded and then associated with the category:{" "}
               <span className="font-semibold text-foreground">
                 {category?.name}
               </span>
             </div>
-
             <DialogFooter>
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setIsUploadImageDialogOpen(false)}
-                disabled={isUploadImageLoading}
+                onClick={() => setIsChangeImageDialogOpen(false)}
+                disabled={isUpdatingImage}
                 className="hover:bg-primary"
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                disabled={isUploadImageLoading}
+                disabled={isUpdatingImage}
                 className="hover:bg-primary"
               >
-                {isUploadImageLoading ? (
+                {isUpdatingImage ? (
                   <div className="flex items-center">
-                    <LoadingSpinner className="h-4 w-4 mr-2" /> Uploading...
+                    <LoadingSpinner className="h-4 w-4 mr-2" /> Updating...
                   </div>
                 ) : (
-                  "Upload Image"
+                  "Update Image"
                 )}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
 
       {/* Delete Image Dialog */}
       <Dialog

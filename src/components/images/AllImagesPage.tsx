@@ -1,44 +1,27 @@
 "use client";
-
-import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import {
-  Search,
+  Image as LucideImage,
   RefreshCw,
-  ImageIcon, // Main icon for images
-  Calendar,
-  Filter,
-  ArrowUp,
-  ArrowDown,
-  Eye, 
-  Info,
-  Plus,
-  Edit, 
-  Trash2, 
-  CheckCircle,
+  Trash2,
+  Eye,
+  Search,
+  Upload,
+  Edit2,
 } from "lucide-react";
-import { getAccessToken } from "@/lib/auth";
-import { ApiResponse, axiosInstance } from "@/lib/axios";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableHead,
-  TableRow,
-  TableCell,
-} from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { axiosInstance } from "@/lib/axios";
 import { toast } from "sonner";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
+
+// SHADCN
 import {
   Select,
   SelectContent,
@@ -46,6 +29,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Skeleton } from "../ui/skeleton";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Badge } from "../ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -53,2000 +41,684 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Skeleton } from "@/components/ui/skeleton"; 
-import { motion } from "framer-motion";
+  DialogClose,
+} from "../ui/dialog";
+import { Label } from "../ui/label";
+import { cn } from "@/lib/utils";
+import { getAccessToken } from "@/lib/auth";
 
-// --- Type Definitions ---
-interface Image {
+type ImageType = "HERO" | "LOGO" | "ICON";
+const IMAGE_TYPES: ImageType[] = ["HERO", "LOGO", "ICON"];
+
+type Image = {
   id: string;
-  isHeroImage: boolean;
-  isLogo: boolean;
-  isIcon: boolean;
-  productId: string | null;
-  categoryId: string | null;
-  subCategoryId: string | null;
-  blogId: string | null;
   url: string;
+  type: ImageType | null;
   createdAt: string;
   updatedAt: string;
-}
+};
 
-interface ImagesData {
-  images: Image[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
+type AdminRole = "SUPER" | "SUB";
 
-interface ImagesApiResponse extends ApiResponse {
-  data: ImagesData;
-}
-
-// For filter/form dropdown options (simplified, in real app these would be fetched from respective APIs)
-interface EntityOption {
-  id: string;
-  name: string; // Or some displayable property
-}
-
-// --- Utility Functions ---
-function formatDate(dateString: string | null) {
-  if (!dateString) return "N/A";
-  return new Date(dateString).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-const AllImagesPage = () => {
-  const [allImages, setAllImages] = useState<Image[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalImagesCount, setTotalImagesCount] = useState(0);
-
-  // Filter states
-  const [searchQuery, setSearchQuery] = useState("");
-  const [associationFilter, setAssociationFilter] = useState<
-    "all" | "productId" | "categoryId" | "subCategoryId" | "blogId" | "none"
-  >("all");
-  const [typeFilter, setTypeFilter] = useState<
-    "all" | "isHeroImage" | "isLogo" | "isIcon"
-  >("all");
-
-  // Sorting states
-  const [sortKey, setSortKey] = useState<keyof Image | null>("createdAt");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-
-  // CRUD operation states
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [createForm, setCreateForm] = useState<{
-    image: File | null;
-    productId: string | null;
-    categoryId: string | null;
-    subCategoryId: string | null;
-    blogId: string | null;
-    isHeroImage: boolean;
-    isLogo: boolean;
-    isIcon: boolean;
-  }>({
-    image: null,
-    productId: null,
-    categoryId: null,
-    subCategoryId: null,
-    blogId: null,
-    isHeroImage: false,
-    isLogo: false,
-    isIcon: false,
-  });
-  const [createErrors, setCreateErrors] = useState<{ [key: string]: string }>({});
-  const [selectedCreateAssociationType, setSelectedCreateAssociationType] =
-    useState<"none" | "productId" | "categoryId" | "subCategoryId" | "blogId">(
-      "none"
-    );
-  const [isCreating, setIsCreating] = useState(false);
-
-  const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
-  const [updateForm, setUpdateForm] = useState<{
-    id: string;
-    productId: string | null;
-    categoryId: string | null;
-    subCategoryId: string | null;
-    blogId: string | null;
-    isHeroImage: boolean;
-    isLogo: boolean;
-    isIcon: boolean;
-  }>({
-    id: "",
-    productId: null,
-    categoryId: null,
-    subCategoryId: null,
-    blogId: null,
-    isHeroImage: false,
-    isLogo: false,
-    isIcon: false,
-  });
-  const [updateErrors, setUpdateErrors] = useState<{ [key: string]: string }>({});
-  const [selectedUpdateAssociationType, setSelectedUpdateAssociationType] =
-    useState<"none" | "productId" | "categoryId" | "subCategoryId" | "blogId">(
-      "none"
-    );
-  const [isUpdating, setIsUpdating] = useState(false);
-
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [imageToDeleteId, setImageToDeleteId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  // Options for association dropdowns (replace with actual fetches for products, categories etc.)
-  const [productOptions, setProductOptions] = useState<EntityOption[]>([]);
-  const [categoryOptions, setCategoryOptions] = useState<EntityOption[]>([]);
-  const [subCategoryOptions, setSubCategoryOptions] = useState<EntityOption[]>(
-    []
-  );
-  const [blogOptions, setBlogOptions] = useState<EntityOption[]>([]); // You'd fetch actual blog posts here
-
-  // New state for search query within dialog select dropdowns
-  const [filterOptionsSearchQuery, setFilterOptionsSearchQuery] = useState("");
-
+const AllImagesPage: React.FC = () => {
   const router = useRouter();
-  const token = getAccessToken(); // Ensure token is available for admin APIs
+  // Authentication and access state
+  const [roleLoading, setRoleLoading] = useState(true);
+  const [hasAccess, setHasAccess] = useState(false);
 
-  // --- Data Fetching ---
-  const fetchAllImages = useCallback(async () => {
+  // Gallery states
+  const [images, setImages] = useState<Image[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<ImageType>("HERO");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploadType, setUploadType] = useState<ImageType>("HERO");
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [imageToEdit, setImageToEdit] = useState<Image | null>(null);
+  const [editType, setEditType] = useState<ImageType>("HERO");
+  const [editLoading, setEditLoading] = useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [imageToDelete, setImageToDelete] = useState<string | null>(null);
+  const [deletingImage, setDeletingImage] = useState(false);
+  const [previewImage, setPreviewImage] = useState<Image | null>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Role check and redirect
+  const checkUserRole = useCallback(async () => {
+    setRoleLoading(true);
+    try {
+      const { data } = await axiosInstance.get(
+        "/admin/me?includeRelations=true",
+        {
+          headers: {
+            Authorization: `Bearer ${getAccessToken()}`,
+          },
+        }
+      );
+      const adminData = data.data.admin;
+      if (adminData.role === "SUB") {
+        router.replace("/users");
+        return;
+      }
+      setHasAccess(adminData.role === "SUPER");
+    } catch {
+      router.replace("/users");
+    } finally {
+      setRoleLoading(false);
+    }
+  }, [router]);
+
+  // Fetch images
+  const fetchImages = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await axiosInstance.get<ImagesApiResponse>(
-        "/public/image"
-      );
-      const data = response.data.data;
-      setAllImages(data?.images || []);
-      setTotalImagesCount(data?.total || 0);
-    } catch (err: any) {
-      setAllImages([]);
-      toast.error(err.response?.data?.message || "Failed to fetch images. Please try again.");
-      console.error("Fetch images error:", err);
+      const { data } = await axiosInstance.get(`/public/image`);
+      setImages(data.data.images);
+    } catch (error) {
+      toast.error("Failed to fetch images.");
+      setImages([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const fetchEntityOptions = useCallback(async () => {
-    // In a real app, you'd fetch these from their respective API endpoints
-    // For now, mocking them or fetching a small subset
-    try {
-      const productRes = await axiosInstance.get<
-        ApiResponse<{ products: { id: string; name: string }[] }>
-      >("/public/product");
-      setProductOptions(productRes.data.data?.products || []);
-      const categoryRes = await axiosInstance.get<
-        ApiResponse<{ categories: { id: string; name: string }[] }>
-      >("/public/category");
-      setCategoryOptions(categoryRes.data.data?.categories || []);
-      const subCategoryRes = await axiosInstance.get<
-        ApiResponse<{ subCategories: { id: string; name: string }[] }>
-      >("/public/sub-category");
-      setSubCategoryOptions(subCategoryRes.data.data?.subCategories || []);
-      // Mocking blog options for demonstration since you don't have a direct API
-      setBlogOptions([
-        { id: "blog-1", name: "First Blog Post" },
-        { id: "blog-2", name: "Another Blog Entry" },
-      ]);
-    } catch (error: any) {
-      console.error("Failed to fetch entity options:", error);
-      toast.error(error.response?.data?.message || "Failed to load options for filters/forms.");
-    }
-  }, []);
+  useEffect(() => {
+    checkUserRole();
+  }, [checkUserRole]);
 
   useEffect(() => {
-    if (!token) {
-      router.push("/login");
-      return;
+    if (hasAccess) {
+      fetchImages();
     }
-    fetchAllImages();
-    fetchEntityOptions();
-  }, [token, router, fetchAllImages, fetchEntityOptions]);
+  }, [hasAccess, fetchImages]);
 
-  // --- Filtering & Sorting Logic ---
-  const filteredAndPaginatedImages = useMemo(() => {
-    let currentImages = [...allImages];
-
-    // 1. Apply Search Filter (on image ID or URL)
-    // NOTE: If you don't display ID/URL, searching by them might be less intuitive for users.
-    // Consider adding search by associated entity name here if that's more useful.
-    if (searchQuery) {
-      currentImages = currentImages.filter(
-        (image) =>
-          image.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          image.url.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          // Potentially add searching by associated entity name here
-          (image.productId &&
-            productOptions
-              .find((p) => p.id === image.productId)
-              ?.name.toLowerCase()
-              .includes(searchQuery.toLowerCase())) ||
-          (image.categoryId &&
-            categoryOptions
-              .find((c) => c.id === image.categoryId)
-              ?.name.toLowerCase()
-              .includes(searchQuery.toLowerCase())) ||
-          (image.subCategoryId &&
-            subCategoryOptions
-              .find((sc) => sc.id === image.subCategoryId)
-              ?.name.toLowerCase()
-              .includes(searchQuery.toLowerCase())) ||
-          (image.blogId &&
-            blogOptions
-              .find((b) => b.id === image.blogId)
-              ?.name.toLowerCase()
-              .includes(searchQuery.toLowerCase()))
+  // Filtered images for UI
+  const filteredImages = useMemo(() => {
+    return images
+      .filter((img) => img.type === activeTab)
+      .filter(
+        (img) =>
+          img.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          new Date(img.createdAt)
+            .toLocaleDateString()
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase())
       );
-    }
+  }, [images, activeTab, searchQuery]);
 
-    // 2. Apply Association Filter
-    if (associationFilter !== "all") {
-      currentImages = currentImages.filter((image) => {
-        if (associationFilter === "none") {
-          return (
-            !image.productId &&
-            !image.categoryId &&
-            !image.subCategoryId &&
-            !image.blogId
-          );
-        }
-        return image[associationFilter] !== null;
-      });
-    }
+  // Stats per type + total
+  const imageStats = useMemo(() => {
+    const counts = IMAGE_TYPES.reduce((acc, type) => {
+      acc[type] = images.filter((img) => img.type === type).length;
+      return acc;
+    }, {} as Record<ImageType, number>);
+    const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+    return { ...counts, TOTAL: total };
+  }, [images]);
 
-    // 3. Apply Type Filter
-    if (typeFilter !== "all") {
-      currentImages = currentImages.filter((image) => {
-        if (typeFilter === "isHeroImage") return image.isHeroImage;
-        if (typeFilter === "isLogo") return image.isLogo;
-        if (typeFilter === "isIcon") return image.isIcon;
-        return false; // Should not reach here
-      });
-    }
-
-    // 4. Apply Sorting
-    if (sortKey) {
-      currentImages.sort((a, b) => {
-        const aValue = a[sortKey];
-        const bValue = b[sortKey];
-
-        if (aValue === null || aValue === undefined)
-          return sortDirection === "asc" ? -1 : 1;
-        if (bValue === null || bValue === undefined)
-          return sortDirection === "asc" ? 1 : -1;
-
-        if (typeof aValue === "string" && typeof bValue === "string") {
-          return sortDirection === "asc"
-            ? aValue.localeCompare(bValue)
-            : bValue.localeCompare(aValue);
-        }
-        // Handle boolean sorting for isHeroImage, isLogo, isIcon
-        if (typeof aValue === "boolean" && typeof bValue === "boolean") {
-          return sortDirection === "asc"
-            ? aValue === bValue
-              ? 0
-              : aValue
-              ? 1
-              : -1
-            : aValue === bValue
-            ? 0
-            : aValue
-            ? -1
-            : 1;
-        }
-        if (sortKey === "createdAt" || sortKey === "updatedAt") {
-          const dateA = new Date(aValue as string).getTime();
-          const dateB = new Date(bValue as string).getTime();
-          return sortDirection === "asc" ? dateA - dateB : dateB - dateA;
-        }
-        return 0;
-      });
-    }
-
-    // 5. Apply Pagination
-    const imagesPerPage = 10;
-    const newTotalPages = Math.ceil(currentImages.length / imagesPerPage);
-    setTotalPages(newTotalPages > 0 ? newTotalPages : 1);
-
-    const startIndex = (currentPage - 1) * imagesPerPage;
-    const endIndex = startIndex + imagesPerPage;
-
-    return currentImages.slice(startIndex, endIndex);
-  }, [
-    allImages,
-    searchQuery,
-    associationFilter,
-    typeFilter,
-    sortKey,
-    sortDirection,
-    currentPage,
-    productOptions, // Added for search functionality
-    categoryOptions, // Added for search functionality
-    subCategoryOptions, // Added for search functionality
-    blogOptions, // Added for search functionality
-  ]);
-
-  // --- Handlers ---
-  const handleRefresh = () => {
-    fetchAllImages();
-    fetchEntityOptions();
-  };
-
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    setCurrentPage(1); // Reset pagination on search
-  };
-
-  const handleAssociationFilterChange = (value: typeof associationFilter) => {
-    setAssociationFilter(value);
-    setCurrentPage(1);
-  };
-
-  const handleTypeFilterChange = (value: typeof typeFilter) => {
-    setTypeFilter(value);
-    setCurrentPage(1);
-  };
-
-  const handleSort = (key: keyof Image) => {
-    if (sortKey === key) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+  // Upload handler
+  const handleFile = (selectedFile: File) => {
+    if (selectedFile && selectedFile.type.startsWith("image/")) {
+      setFile(selectedFile);
     } else {
-      setSortKey(key);
-      setSortDirection("asc");
+      toast.error("Please select a valid image file.");
     }
   };
 
-  const renderSortIcon = (key: keyof Image) => {
-    if (sortKey !== key) return null;
-    return sortDirection === "asc" ? (
-      <ArrowUp className="ml-1 h-3 w-3 inline" />
-    ) : (
-      <ArrowDown className="ml-1 h-3 w-3 inline" />
-    );
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) handleFile(e.target.files[0]);
   };
 
-  const handleViewDetails = (imageId: string) => {
-    router.push(`/image/${imageId}`); // Navigate to image details page
-  };
-
-  // --- CRUD Handlers ---
-
-  const handleCreateImage = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    let hasError = false;
-    setCreateErrors({});
-
-    if (!createForm.image) {
-      setCreateErrors((prev) => ({ ...prev, image: "Image file is required." }));
-      hasError = true;
-    } else {
-      if (!createForm.image.type.startsWith("image/")) {
-        setCreateErrors((prev) => ({ ...prev, image: "File must be an image (e.g., JPEG, PNG)." }));
-        hasError = true;
-      }
-      if (createForm.image.size > 5 * 1024 * 1024) {
-        setCreateErrors((prev) => ({ ...prev, image: "Image must be smaller than 5MB." }));
-        hasError = true;
-      }
-    }
-
-    const noFlags = !createForm.isHeroImage && !createForm.isLogo && !createForm.isIcon;
-    if (noFlags && selectedCreateAssociationType !== "none") {
-      const idKey = selectedCreateAssociationType;
-      const idValue = createForm[idKey as keyof typeof createForm];
-      if (!idValue) {
-        setCreateErrors((prev) => ({
-          ...prev,
-          associationId: `Please select a ${idKey.replace("Id", "").toLowerCase()}.`,
-        }));
-        hasError = true;
-      }
-    }
-
-    if (hasError) {
-      return;
-    }
-
-    setIsCreating(true);
-
-    const formData = new FormData();
-    formData.append("image", createForm.image as File);
-
-    // Append the boolean flags, converting them to strings, only if true
-    if (createForm.isHeroImage) formData.append("isHeroImage", "true");
-    if (createForm.isLogo) formData.append("isLogo", "true");
-    if (createForm.isIcon) formData.append("isIcon", "true");
-
-    // Append the selected association ID only if no flags are set
-    if (noFlags && selectedCreateAssociationType !== "none") {
-      const idKey = selectedCreateAssociationType;
-      const idValue = createForm[idKey as keyof typeof createForm];
-      if (idValue) {
-        formData.append(idKey, idValue as string);
-      }
-    }
-
+  const onUpload = async () => {
+    if (!file) return;
+    setUploadLoading(true);
     try {
-      const response = await axiosInstance.post("/admin/image", formData, {
+      const formData = new FormData();
+      formData.append("image", file);
+      const { data: uploadRes } = await axiosInstance.post(
+        `/admin/image`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+      const imageId = uploadRes.data.image.id;
+      await axiosInstance.patch(`/admin/image/${imageId}`, {
+        type: uploadType,
+      });
+      setFile(null);
+      setShowUploadDialog(false);
+      await fetchImages();
+      toast.success("Image uploaded successfully!");
+    } catch {
+      toast.error("Image upload failed. Please try again.");
+    } finally {
+      setUploadLoading(false);
+    }
+  };
+
+  // Drag and drop setup for upload dialog
+  useEffect(() => {
+    const div = dropRef.current;
+    if (!div || !showUploadDialog) return;
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      setIsDragging(true);
+    };
+    const handleDragLeave = () => setIsDragging(false);
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      if (e.dataTransfer?.files?.[0]) handleFile(e.dataTransfer.files[0]);
+    };
+    div.addEventListener("dragover", handleDragOver);
+    div.addEventListener("dragleave", handleDragLeave);
+    div.addEventListener("drop", handleDrop);
+    return () => {
+      div.removeEventListener("dragover", handleDragOver);
+      div.removeEventListener("dragleave", handleDragLeave);
+      div.removeEventListener("drop", handleDrop);
+    };
+  }, [showUploadDialog]);
+
+  // Edit handler
+  const handleEdit = (img: Image) => {
+    setImageToEdit(img);
+    setEditType(img.type || "HERO");
+    setShowEditDialog(true);
+  };
+
+  const onSaveEdit = async () => {
+    if (!imageToEdit) return;
+    setEditLoading(true);
+    try {
+      await axiosInstance.patch(`/admin/image/${imageToEdit.id}`, {
+        type: editType,
+      });
+      setShowEditDialog(false);
+      await fetchImages();
+      toast.success("Image type updated successfully!");
+    } catch {
+      toast.error("Failed to update image type. Please try again.");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // Refresh function
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setSearchQuery("");
+    await fetchImages();
+    setRefreshing(false);
+  };
+
+  // Delete handlers
+  const handleDelete = (imageId: string) => {
+    setImageToDelete(imageId);
+    setShowDeleteConfirmation(true);
+  };
+  const executeDelete = async () => {
+    if (!imageToDelete) return;
+    setDeletingImage(true);
+    try {
+      await axiosInstance.delete(`/admin/image/${imageToDelete}`, {
         headers: {
-          "Content-Type": "multipart/form-data",
+          "Content-Type": "application/json",
+          Authorization: `bearer ${getAccessToken()}`,
         },
       });
-
-      if (response.data.status === "success") {
-        toast.success("Image uploaded successfully!");
-        setIsCreateDialogOpen(false);
-        setCreateForm({
-          image: null,
-          productId: null,
-          categoryId: null,
-          subCategoryId: null,
-          blogId: null,
-          isHeroImage: false, // Reset on close
-          isLogo: false,
-          isIcon: false,
-        });
-        setSelectedCreateAssociationType("none");
-        setFilterOptionsSearchQuery(""); // Clear search filter in dialog
-        fetchAllImages(); // Refresh list
-        fetchEntityOptions(); // Refresh entity options as well
-      } else {
-        toast.error(response.data.message || "Failed to upload image. Please try again.");
-      }
-    } catch (err: any) {
-      let errorMessage = "An unexpected error occurred during upload.";
-      if (err.response) {
-        if (err.response.status === 413) {
-          errorMessage = "Image too large. Please upload an image smaller than 5MB.";
-        } else if (err.response.data?.message) {
-          errorMessage = err.response.data.message;
-        } else if (err.response.data?.errors) {
-          errorMessage = Object.values(err.response.data.errors).join(" ");
-        }
-      }
-      toast.error(errorMessage);
+      toast.success("Image deleted successfully.");
+      await fetchImages();
+    } catch {
+      toast.error("Failed to delete image. Please try again.");
     } finally {
-      setIsCreating(false);
+      setDeletingImage(false);
+      setShowDeleteConfirmation(false);
+      setImageToDelete(null);
     }
   };
-
-  const openUpdateDialog = (image: Image) => {
-    // Determine the current association type for the update form
-    let currentAssociationType: typeof selectedUpdateAssociationType = "none";
-    if (image.productId) currentAssociationType = "productId";
-    else if (image.categoryId) currentAssociationType = "categoryId";
-    else if (image.subCategoryId) currentAssociationType = "subCategoryId";
-    else if (image.blogId) currentAssociationType = "blogId";
-
-    setUpdateForm({
-      id: image.id,
-      productId: image.productId,
-      categoryId: image.categoryId,
-      subCategoryId: image.subCategoryId,
-      blogId: image.blogId,
-      isHeroImage: image.isHeroImage, // Keep current value
-      isLogo: image.isLogo, // Keep current value
-      isIcon: image.isIcon, // Keep current value
-    });
-    setSelectedUpdateAssociationType(currentAssociationType);
-    setIsUpdateDialogOpen(true);
+  const cancelDelete = () => {
+    setShowDeleteConfirmation(false);
+    setImageToDelete(null);
   };
 
-  const handleUpdateImage = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    let hasError = false;
-    setUpdateErrors({});
-
-    const noFlags = !updateForm.isHeroImage && !updateForm.isLogo && !updateForm.isIcon;
-    if (noFlags && selectedUpdateAssociationType !== "none") {
-      const idKey = selectedUpdateAssociationType;
-      const idValue = updateForm[idKey as keyof typeof updateForm];
-      if (!idValue) {
-        setUpdateErrors((prev) => ({
-          ...prev,
-          associationId: `Please select a ${idKey.replace("Id", "").toLowerCase()}.`,
-        }));
-        hasError = true;
-      }
-    }
-
-    if (hasError) {
-      return;
-    }
-
-    setIsUpdating(true);
-
-    // Build payload, ensuring only one association ID is present based on selected type
-    const payload: { [key: string]: any } = {};
-
-    // Only include type flags if they are explicitly true in the form
-    if (updateForm.isHeroImage) payload.isHeroImage = true;
-    if (updateForm.isLogo) payload.isLogo = true;
-    if (updateForm.isIcon) payload.isIcon = true;
-
-    // Handle association ID based on selected type, UNLESS a boolean flag is true
-    if (!updateForm.isHeroImage && !updateForm.isLogo && !updateForm.isIcon) {
-      if (selectedUpdateAssociationType !== "none") {
-        const idKey = selectedUpdateAssociationType;
-        const idValue = updateForm[idKey as keyof typeof updateForm];
-        if (idValue) {
-          payload[idKey] = idValue;
-        }
-      } else {
-        // If "none" is selected and no boolean flag is true, ensure all association IDs are explicitly set to null
-        payload.productId = null;
-        payload.categoryId = null;
-        payload.subCategoryId = null;
-        payload.blogId = null;
-      }
-    }
-
-    try {
-      const response = await axiosInstance.patch(
-        `/admin/image/${updateForm.id}`,
-        payload
-      );
-
-      if (response.data.status === "success") {
-        toast.success("Image updated successfully!");
-        setIsUpdateDialogOpen(false);
-        // Reset flags to null after successful update to ensure they don't override next update
-        setUpdateForm((prev) => ({
-          ...prev,
-          isHeroImage: false,
-          isLogo: false,
-          isIcon: false,
-        }));
-        setFilterOptionsSearchQuery(""); // Clear search filter in dialog
-        fetchAllImages(); // Refresh list
-        fetchEntityOptions(); // Refresh entity options as well
-      } else {
-        toast.error(response.data.message || "Failed to update image. Please try again.");
-      }
-    } catch (err: any) {
-      let errorMessage = "An unexpected error occurred during update.";
-      if (err.response) {
-        if (err.response.data?.message) {
-          errorMessage = err.response.data.message;
-        } else if (err.response.data?.errors) {
-          errorMessage = Object.values(err.response.data.errors).join(" ");
-        }
-      }
-      toast.error(errorMessage);
-    } finally {
-      setIsUpdating(false);
-    }
+  // Preview handler
+  const handlePreview = (img: Image) => {
+    setPreviewImage(img);
   };
 
-  const handleDeleteImageClick = (imageId: string) => {
-    setImageToDeleteId(imageId);
-    setIsDeleteDialogOpen(true);
-  };
-
-  const handleConfirmDeleteImage = async () => {
-    if (!imageToDeleteId) return;
-
-    setIsDeleting(true);
-    try {
-      const response = await axiosInstance.delete(
-        `/admin/image/${imageToDeleteId}`
-      );
-      if (response.data.status === "success") {
-        toast.success("Image deleted successfully!");
-        setIsDeleteDialogOpen(false);
-        setImageToDeleteId(null);
-        fetchAllImages(); // Refresh list
-      } else {
-        toast.error(response.data.message || "Failed to delete image. Please try again.");
-      }
-    } catch (err: any) {
-      let errorMessage = "An unexpected error occurred during deletion.";
-      if (err.response) {
-        if (err.response.data?.message) {
-          errorMessage = err.response.data.message;
-        } else if (err.response.data?.errors) {
-          errorMessage = Object.values(err.response.data.errors).join(" ");
-        }
-      }
-      toast.error(errorMessage);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  // Helper to filter options for select dropdowns
-  const getFilteredOptions = (options: EntityOption[]) => {
-    if (!filterOptionsSearchQuery) {
-      return options;
-    }
-    const lowerCaseQuery = filterOptionsSearchQuery.toLowerCase();
-    return options.filter(
-      (option) =>
-        option.name.toLowerCase().includes(lowerCaseQuery) ||
-        option.id.toLowerCase().includes(lowerCaseQuery) // Still search by ID, but don't show it
+  if (roleLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <LoadingSpinner className="h-8 w-8 mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
     );
-  };
+  }
 
-  // --- Render ---
+  if (!hasAccess) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header Section */}
+      {/* Top Title and Stats */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="border-b border-border"
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-lg bg-muted">
-                <ImageIcon className="h-6 w-6 text-muted-foreground" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 border-b border-border">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+            <div className="flex items-center space-x-4">
+              <div className="p-3 rounded-lg bg-muted">
+                <LucideImage className="h-8 w-8 text-blue-600" />
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-foreground">
-                  Image Management
+                  Image Gallery Management
                 </h1>
-                <span className="text-muted-foreground">
-                  Manage all images in your store
-                </span>
+                <p className="text-muted-foreground">
+                  Upload, edit, delete, and manage your images efficiently.
+                </p>
               </div>
             </div>
-            <Button
-              onClick={() => setIsCreateDialogOpen(true)}
-              className="hover:bg-primary"
-              disabled={loading}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Upload Image
-            </Button>
           </div>
         </div>
       </motion.div>
 
-      {/* Main Content Area */}
+      {/* Stats Cards */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards (Basic placeholder, can be expanded with more metrics) */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1, duration: 0.5 }}
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8"
-        >
-          {loading ? (
-            [...Array(4)].map((_, idx) => (
-              <Card
-                key={idx}
-                className="hover:shadow-md transition-shadow duration-200"
-              >
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-4 w-4 rounded-full" />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-8 w-24" />
-                </CardContent>
-              </Card>
-            ))
-          ) : (
-            <>
-              <Card className="hover:shadow-md transition-shadow duration-200">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          {IMAGE_TYPES.map((type, idx) => (
+            <motion.div
+              key={type}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.06 * idx, duration: 0.5 }}
+            >
+              <Card className="hover:shadow-md transition-shadow">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Total Images
+                    {type.charAt(0) + type.slice(1).toLowerCase()}
                   </CardTitle>
-                  <ImageIcon className="h-4 w-4 text-primary" />
+                  <LucideImage className="h-4 w-4 text-primary" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-foreground">
-                    {totalImagesCount}
-                  </div>
+                  {loading ? (
+                    <Skeleton className="h-7 w-16" />
+                  ) : (
+                    <div className="text-xl font-bold text-foreground">
+                      {imageStats[type]}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-              <Card className="hover:shadow-md transition-shadow duration-200">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Hero Images
-                  </CardTitle>
-                  <CheckCircle className="h-4 w-4 text-green-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-600">
-                    {allImages.filter((img) => img.isHeroImage).length}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="hover:shadow-md transition-shadow duration-200">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Logos
-                  </CardTitle>
-                  <ImageIcon className="h-4 w-4 text-blue-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-blue-600">
-                    {allImages.filter((img) => img.isLogo).length}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="hover:shadow-md transition-shadow duration-200">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Icons
-                  </CardTitle>
-                  <ImageIcon className="h-4 w-4 text-purple-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-purple-600">
-                    {allImages.filter((img) => img.isIcon).length}
-                  </div>
-                </CardContent>
-              </Card>
-            </>
-          )}
-        </motion.div>
+            </motion.div>
+          ))}
+        </div>
 
-        {/* Controls: Search and Filters */}
+        {/* Controls */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
+          transition={{ duration: 0.5 }}
         >
           <Card className="mb-8 p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-              <div className="relative w-full sm:w-auto flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+            <div className="flex flex-wrap gap-2 mb-6 justify-center sm:justify-start">
+              {IMAGE_TYPES.map((type) => (
+                <Button
+                  key={type}
+                  onClick={() => setActiveTab(type)}
+                  variant={activeTab === type ? "default" : "outline"}
+                  className="font-semibold"
+                >
+                  {type.charAt(0) + type.slice(1).toLowerCase()}
+                </Button>
+              ))}
+            </div>
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
                   type="text"
-                  placeholder="Search images by ID or URL..." // Note: Internal search logic will still use ID/URL
+                  placeholder="Search by ID or date..."
                   value={searchQuery}
-                  onChange={handleSearch}
-                  className="w-full pl-10 pr-4 py-2"
-                  aria-label="Search images"
-                  disabled={loading}
-                  maxLength={255} // Max length for search query (common for URLs or IDs)
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10"
                 />
               </div>
-              <div className="flex flex-col sm:flex-row gap-4 items-center">
-                {/* Association Filter */}
-                <div className="relative">
-                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Select
-                    value={associationFilter}
-                    onValueChange={handleAssociationFilterChange}
-                    disabled={loading}
-                  >
-                    <SelectTrigger className="w-[180px] pl-10">
-                      <SelectValue placeholder="Filter by Association" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-lg shadow-lg bg-popover">
-                      <SelectItem value="all">All Associations</SelectItem>
-                      <SelectItem value="productId">Product</SelectItem>
-                      <SelectItem value="categoryId">Category</SelectItem>
-                      <SelectItem value="subCategoryId">Subcategory</SelectItem>
-                      <SelectItem value="blogId">Blog</SelectItem>
-                      <SelectItem value="none">No Association</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Type Filter */}
-                <div className="relative">
-                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Select
-                    value={typeFilter}
-                    onValueChange={handleTypeFilterChange}
-                    disabled={loading}
-                  >
-                    <SelectTrigger className="w-[150px] pl-10">
-                      <SelectValue placeholder="Filter by Type" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-lg shadow-lg bg-popover">
-                      <SelectItem value="all">All Types</SelectItem>
-                      <SelectItem value="isHeroImage">Hero Image</SelectItem>
-                      <SelectItem value="isLogo">Logo</SelectItem>
-                      <SelectItem value="isIcon">Icon</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
+              <div className="flex gap-2 w-full sm:w-auto">
                 <Button
                   onClick={handleRefresh}
-                  disabled={loading}
+                  disabled={loading || refreshing}
                   variant="outline"
-                  className="flex items-center gap-2 hover:bg-primary"
-                  aria-label="Refresh image list"
+                  className="flex-1 sm:flex-none"
                 >
                   <RefreshCw
-                    className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+                    className={`h-5 w-5 mr-2 ${
+                      refreshing ? "animate-spin" : ""
+                    }`}
                   />
                   Refresh
+                </Button>
+                <Button
+                  onClick={() => setShowUploadDialog(true)}
+                  className="flex-1 sm:flex-none"
+                >
+                  <Upload className="h-5 w-5 mr-2" />
+                  Upload New
                 </Button>
               </div>
             </div>
           </Card>
         </motion.div>
 
-        {/* Images Table */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.5 }}
-        >
+        {/* Image Gallery */}
+        <AnimatePresence mode="wait">
           {loading ? (
-            <Card className="border-border shadow-sm">
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>
-                        <Skeleton className="h-4 w-16" />
-                      </TableHead>
-                      <TableHead>
-                        <Skeleton className="h-4 w-48" />
-                      </TableHead>
-                      <TableHead>
-                        <Skeleton className="h-4 w-28" />
-                      </TableHead>
-                      <TableHead className="text-right">
-                        <Skeleton className="h-4 w-16" />
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {[...Array(5)].map((_, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell>
-                          <Skeleton className="h-16 w-16 rounded-md" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-48" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-28" />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Skeleton className="h-8 w-24" />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          ) : filteredAndPaginatedImages.length === 0 ? (
-            <Card className="border-border">
-              <CardContent className="pt-6">
-                <div className="text-center py-12">
-                  <ImageIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-foreground mb-2">
-                    No images found
-                  </h3>
-                  <span className="text-muted-foreground mb-4">
-                    Adjust your search or filters, or upload a new image.
-                  </span>
-                  <Button
-                    onClick={() => setIsCreateDialogOpen(true)}
-                    className="hover:bg-primary"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Upload Image
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6"
+            >
+              {[...Array(10)].map((_, idx) => (
+                <Skeleton key={idx} className="h-64 w-full rounded-xl" />
+              ))}
+            </motion.div>
+          ) : filteredImages.length === 0 ? (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <Card>
+                <CardContent className="p-10 text-center text-muted-foreground text-lg">
+                  No images found. Try uploading new ones or adjusting your
+                  search.
+                </CardContent>
+              </Card>
+            </motion.div>
           ) : (
-            <Card className="border-border shadow-sm">
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Preview</TableHead>
-                      {/* Removed ID TableHead */}
-                      {/* Removed URL TableHead */}
-                      <TableHead>Associated With</TableHead>
-                      <TableHead
-                        className="cursor-pointer hover:text-foreground"
-                        onClick={() => handleSort("createdAt")}
+            <motion.div
+              key="gallery"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6"
+            >
+              {filteredImages.map((img, idx) => (
+                <motion.div
+                  key={img.id}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: idx * 0.05 }}
+                >
+                  <Card className="relative group overflow-hidden hover:shadow-lg transition-shadow">
+                    <button
+                      onClick={() => handlePreview(img)}
+                      className="w-full"
+                      aria-label={`Preview ${img.id}`}
+                    >
+                      <img
+                        src={img.url}
+                        alt={`${img.type} image ${img.id}`}
+                        className="rounded-t-xl w-full h-auto group-hover:scale-105 transition-transform duration-300 p-4"
+                      />
+                    </button>
+                    <CardHeader className="p-4">
+                      <div className="flex items-center justify-between">
+                        <Badge variant="secondary" className="uppercase">
+                          {img.type}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(img.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="flex justify-end p-4 pt-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handlePreview(img)}
+                        className="mr-2 hover:bg-accent"
+                        aria-label="Preview image"
                       >
-                        Uploaded At {renderSortIcon("createdAt")}
-                      </TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredAndPaginatedImages.map((image) => (
-                      <TableRow key={image.id}>
-                        <TableCell>
-                          <div className="w-16 h-16 rounded-md overflow-hidden bg-muted flex items-center justify-center">
-                            {image.url ? (
-                              <img
-                                src={image.url}
-                                alt="Image preview"
-                                className="object-cover w-full h-full"
-                              />
-                            ) : (
-                              <ImageIcon className="h-8 w-8 text-muted-foreground" />
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {image.isHeroImage && (
-                            <Badge variant="secondary" className="mr-1">
-                              Hero
-                            </Badge>
-                          )}
-                          {image.isIcon && (
-                            <Badge variant="secondary" className="mr-1">
-                              Icon
-                            </Badge>
-                          )}
-                          {image.isLogo && (
-                            <Badge variant="secondary" className="mr-1">
-                              Logo
-                            </Badge>
-                          )}
-                          {image.productId && (
-                            <Badge variant="secondary" className="mr-1">
-                              Product
-                            </Badge>
-                          )}
-                          {image.categoryId && (
-                            <Badge variant="secondary" className="mr-1">
-                              Category
-                            </Badge>
-                          )}
-                          {image.subCategoryId && (
-                            <Badge variant="secondary" className="mr-1">
-                              SubCategory
-                            </Badge>
-                          )}
-                          {image.blogId && (
-                            <Badge variant="secondary" className="mr-1">
-                              Blog
-                            </Badge>
-                          )}
-                          {!image.productId &&
-                            !image.categoryId &&
-                            !image.subCategoryId &&
-                            !image.blogId &&
-                            !image.isHeroImage &&
-                            !image.isLogo &&
-                            !image.isIcon && (
-                              <Badge variant="outline">None</Badge>
-                            )}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          <div className="flex items-center space-x-1">
-                            <span>{formatDate(image.createdAt)}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end space-x-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleViewDetails(image.id)}
-                              className="hover:text-primary hover:bg-primary/10 border-border"
-                              disabled={loading}
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              View
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openUpdateDialog(image)}
-                              className="hover:text-primary hover:bg-primary/10 border-border"
-                              disabled={loading}
-                            >
-                              <Edit className="h-4 w-4 mr-1" />
-                              Edit
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDeleteImageClick(image.id)}
-                              disabled={isDeleting || loading}
-                              className="hover:bg-destructive/10 hover:border-destructive hover:text-destructive"
-                            >
-                              {isDeleting && imageToDeleteId === image.id ? (
-                                <div className="flex items-center">
-                                  <LoadingSpinner className="h-4 w-4 mr-1 text-destructive" />{" "}
-                                  Deleting...
-                                </div>
-                              ) : (
-                                <>
-                                  <Trash2 className="h-4 w-4 mr-1" />
-                                  Delete
-                                </>
-                              )}
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEdit(img)}
+                        className="mr-2 hover:bg-accent"
+                        aria-label="Edit image"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(img.id)}
+                        disabled={deletingImage && imageToDelete === img.id}
+                        className="hover:bg-destructive/10 hover:text-destructive"
+                        aria-label="Delete image"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </motion.div>
           )}
-        </motion.div>
+        </AnimatePresence>
 
-        {/* Pagination */}
-        {filteredAndPaginatedImages.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5, duration: 0.5 }}
-            className="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4"
-          >
-            <Button
-              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1 || loading}
-              variant="outline"
-              size="sm"
-              aria-label="Previous page"
-              className="hover:bg-primary"
+        {/* Upload Dialog */}
+        <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <Upload className="mr-2 h-6 w-6" />
+                Upload New Image
+              </DialogTitle>
+            </DialogHeader>
+            <div
+              ref={dropRef}
+              className={cn(
+                "border-2 border-dashed rounded-lg p-6 text-center transition-colors",
+                isDragging ? "border-primary bg-primary/10" : "border-border"
+              )}
             >
-              Previous
-            </Button>
-            <span className="text-muted-foreground text-sm sm:text-base">
-              Page {currentPage} of {totalPages}
-            </span>
-            <Button
-              onClick={() =>
-                setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-              }
-              disabled={currentPage === totalPages || loading}
-              variant="outline"
-              size="sm"
-              aria-label="Next page"
-              className="hover:bg-primary"
-            >
-              Next
-            </Button>
-          </motion.div>
-        )}
-      </div>
-
-      {/* Create Image Dialog */}
-      <Dialog
-        open={isCreateDialogOpen}
-        onOpenChange={(open) => {
-          setIsCreateDialogOpen(open);
-          if (!open) {
-            setIsCreating(false);
-            setCreateForm({
-              image: null,
-              productId: null,
-              categoryId: null,
-              subCategoryId: null,
-              blogId: null,
-              isHeroImage: false, // Reset on close
-              isLogo: false,
-              isIcon: false,
-            });
-            setCreateErrors({});
-            setSelectedCreateAssociationType("none");
-            setFilterOptionsSearchQuery(""); // Clear search filter when dialog closes
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Upload New Image</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleCreateImage} className="space-y-4">
-            <div>
-              <label
-                htmlFor="imageFile"
-                className="block text-sm font-medium text-foreground mb-1"
-              >
-                Image File <span className="text-destructive">*</span>
-              </label>
+              <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+              <Label htmlFor="file-upload" className="cursor-pointer">
+                <p className="text-lg font-medium text-foreground mb-2">
+                  Drag and drop an image here
+                </p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  or click to select
+                </p>
+              </Label>
               <Input
-                id="imageFile"
+                id="file-upload"
                 type="file"
                 accept="image/*"
-                onChange={(e) =>
-                  setCreateForm({
-                    ...createForm,
-                    image: e.target.files ? e.target.files[0] : null,
-                  })
-                }
-                disabled={isCreating || loading}
-                required
-                maxLength={255} // Max length for file name (often restricted by OS)
+                onChange={onFileChange}
+                className="mb-4"
               />
-              {createErrors.image && (
-                <p className="text-destructive text-sm mt-1">
-                  {createErrors.image}
+              {file && (
+                <p className="text-sm text-muted-foreground mb-4">
+                  Selected: {file.name}
                 </p>
               )}
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="createIsHeroImage"
-                  checked={createForm.isHeroImage}
-                  onCheckedChange={(checked: boolean) => {
-                    if (checked) {
-                      setSelectedCreateAssociationType("none");
-                      setCreateForm({
-                        ...createForm,
-                        productId: null,
-                        categoryId: null,
-                        subCategoryId: null,
-                        blogId: null,
-                      });
-                    }
-                    setCreateForm({
-                      ...createForm,
-                      isHeroImage: checked,
-                      isLogo: checked ? false : createForm.isLogo, // Uncheck others if this is checked
-                      isIcon: checked ? false : createForm.isIcon, // Uncheck others if this is checked
-                    });
-                  }}
-                  disabled={isCreating || loading}
-                />
-                <label
-                  htmlFor="createIsHeroImage"
-                  className="text-sm font-medium"
-                >
-                  Is Hero
-                </label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="createIsLogo"
-                  checked={createForm.isLogo}
-                  onCheckedChange={(checked: boolean) => {
-                    if (checked) {
-                      setSelectedCreateAssociationType("none");
-                      setCreateForm({
-                        ...createForm,
-                        productId: null,
-                        categoryId: null,
-                        subCategoryId: null,
-                        blogId: null,
-                      });
-                    }
-                    setCreateForm({
-                      ...createForm,
-                      isLogo: checked,
-                      isHeroImage: checked ? false : createForm.isHeroImage, // Uncheck others if this is checked
-                      isIcon: checked ? false : createForm.isIcon, // Uncheck others if this is checked
-                    });
-                  }}
-                  disabled={isCreating || loading}
-                />
-                <label htmlFor="createIsLogo" className="text-sm font-medium">
-                  Is Logo
-                </label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="createIsIcon"
-                  checked={createForm.isIcon}
-                  onCheckedChange={(checked: boolean) => {
-                    if (checked) {
-                      setSelectedCreateAssociationType("none");
-                      setCreateForm({
-                        ...createForm,
-                        productId: null,
-                        categoryId: null,
-                        subCategoryId: null,
-                        blogId: null,
-                      });
-                    }
-                    setCreateForm({
-                      ...createForm,
-                      isIcon: checked,
-                      isHeroImage: checked ? false : createForm.isHeroImage, // Uncheck others if this is checked
-                      isLogo: checked ? false : createForm.isLogo, // Uncheck others if this is checked
-                    });
-                  }}
-                  disabled={isCreating || loading}
-                />
-                <label htmlFor="createIsIcon" className="text-sm font-medium">
-                  Is Icon
-                </label>
-              </div>
-            </div>
-
-            <div>
-              <label
-                htmlFor="createAssociationType"
-                className="block text-sm font-medium text-foreground mb-1"
-              >
-                Associate With
-              </label>
               <Select
-                value={selectedCreateAssociationType}
-                onValueChange={(
-                  value: typeof selectedCreateAssociationType
-                ) => {
-                  setSelectedCreateAssociationType(value);
-                  setCreateForm({
-                    ...createForm,
-                    productId: null,
-                    categoryId: null,
-                    subCategoryId: null,
-                    blogId: null,
-                  }); // Clear other IDs
-                  setFilterOptionsSearchQuery(""); // Clear search filter when dialog closes
-                }}
-                disabled={
-                  isCreating ||
-                  createForm.isHeroImage ||
-                  createForm.isLogo ||
-                  createForm.isIcon ||
-                  loading
-                }
+                value={uploadType}
+                onValueChange={(v) => setUploadType(v as ImageType)}
               >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select association type" />
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Type" />
                 </SelectTrigger>
-                <SelectContent className="rounded-lg shadow-lg bg-popover">
-                  <SelectItem value="none">No Association</SelectItem>
-                  <SelectItem value="productId">Product</SelectItem>
-                  <SelectItem value="categoryId">Category</SelectItem>
-                  <SelectItem value="subCategoryId">Subcategory</SelectItem>
-                  <SelectItem value="blogId">Blog Post</SelectItem>
+                <SelectContent>
+                  {IMAGE_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t.charAt(0) + t.slice(1).toLowerCase()}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-
-            {selectedCreateAssociationType === "productId" && (
-              <div>
-                <label
-                  htmlFor="createProductId"
-                  className="block text-sm font-medium text-foreground mb-1"
-                >
-                  Product
-                </label>
-                <Select
-                  value={createForm.productId ?? "none"} // Use 'none' for placeholder/null
-                  onValueChange={(value) =>
-                    setCreateForm({
-                      ...createForm,
-                      productId: value === "none" ? null : value,
-                    })
-                  }
-                  disabled={
-                    isCreating || productOptions.length === 0 || loading
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a product" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-lg shadow-lg bg-popover">
-                    <div className="p-2 sticky top-0 bg-popover z-10 border-b border-border">
-                      <Input
-                        placeholder="Search products..."
-                        value={filterOptionsSearchQuery}
-                        onChange={(e) =>
-                          setFilterOptionsSearchQuery(e.target.value)
-                        }
-                        className="w-full h-8"
-                        maxLength={100} // Max length for search input in select
-                      />
-                    </div>
-                    <SelectItem value="none">No Product</SelectItem>{" "}
-                    {/* Explicit "No selection" */}
-                    {getFilteredOptions(productOptions).length === 0 ? (
-                      <SelectItem value="no-match" disabled>
-                        No matching products
-                      </SelectItem>
-                    ) : (
-                      getFilteredOptions(productOptions).map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.name} {/* Only show name */}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                {createErrors.associationId && (
-                  <p className="text-destructive text-sm mt-1">
-                    {createErrors.associationId}
-                  </p>
-                )}
-              </div>
-            )}
-            {selectedCreateAssociationType === "categoryId" && (
-              <div>
-                <label
-                  htmlFor="createCategoryId"
-                  className="block text-sm font-medium text-foreground mb-1"
-                >
-                  Category
-                </label>
-                <Select
-                  value={createForm.categoryId ?? "none"}
-                  onValueChange={(value) =>
-                    setCreateForm({
-                      ...createForm,
-                      categoryId: value === "none" ? null : value,
-                    })
-                  }
-                  disabled={
-                    isCreating || categoryOptions.length === 0 || loading
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a category" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-lg shadow-lg bg-popover">
-                    <div className="p-2 sticky top-0 bg-popover z-10 border-b border-border">
-                      <Input
-                        placeholder="Search categories..."
-                        value={filterOptionsSearchQuery}
-                        onChange={(e) =>
-                          setFilterOptionsSearchQuery(e.target.value)
-                        }
-                        className="w-full h-8"
-                        maxLength={100} // Max length for search input in select
-                      />
-                    </div>
-                    <SelectItem value="none">No Category</SelectItem>
-                    {getFilteredOptions(categoryOptions).length === 0 ? (
-                      <SelectItem value="no-match" disabled>
-                        No matching categories
-                      </SelectItem>
-                    ) : (
-                      getFilteredOptions(categoryOptions).map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.name} {/* Only show name */}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                {createErrors.associationId && (
-                  <p className="text-destructive text-sm mt-1">
-                    {createErrors.associationId}
-                  </p>
-                )}
-              </div>
-            )}
-            {selectedCreateAssociationType === "subCategoryId" && (
-              <div>
-                <label
-                  htmlFor="createSubCategoryId"
-                  className="block text-sm font-medium text-foreground mb-1"
-                >
-                  Subcategory
-                </label>
-                <Select
-                  value={createForm.subCategoryId ?? "none"}
-                  onValueChange={(value) =>
-                    setCreateForm({
-                      ...createForm,
-                      subCategoryId: value === "none" ? null : value,
-                    })
-                  }
-                  disabled={
-                    isCreating || subCategoryOptions.length === 0 || loading
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a subcategory" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-lg shadow-lg bg-popover">
-                    <div className="p-2 sticky top-0 bg-popover z-10 border-b border-border">
-                      <Input
-                        placeholder="Search subcategories..."
-                        value={filterOptionsSearchQuery}
-                        onChange={(e) =>
-                          setFilterOptionsSearchQuery(e.target.value)
-                        }
-                        className="w-full h-8"
-                        maxLength={100} // Max length for search input in select
-                      />
-                    </div>
-                    <SelectItem value="none">No Subcategory</SelectItem>
-                    {getFilteredOptions(subCategoryOptions).length === 0 ? (
-                      <SelectItem value="no-match" disabled>
-                        No matching subcategories
-                      </SelectItem>
-                    ) : (
-                      getFilteredOptions(subCategoryOptions).map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.name} {/* Only show name */}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                {createErrors.associationId && (
-                  <p className="text-destructive text-sm mt-1">
-                    {createErrors.associationId}
-                  </p>
-                )}
-              </div>
-            )}
-            {selectedCreateAssociationType === "blogId" && (
-              <div>
-                <label
-                  htmlFor="createBlogId"
-                  className="block text-sm font-medium text-foreground mb-1"
-                >
-                  Blog Post
-                </label>
-                <Select
-                  value={createForm.blogId ?? "none"}
-                  onValueChange={(value) =>
-                    setCreateForm({
-                      ...createForm,
-                      blogId: value === "none" ? null : value,
-                    })
-                  }
-                  disabled={isCreating || blogOptions.length === 0 || loading}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a blog post" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-lg shadow-lg bg-popover">
-                    <div className="p-2 sticky top-0 bg-popover z-10 border-b border-border">
-                      <Input
-                        placeholder="Search blog posts..."
-                        value={filterOptionsSearchQuery}
-                        onChange={(e) =>
-                          setFilterOptionsSearchQuery(e.target.value)
-                        }
-                        className="w-full h-8"
-                        maxLength={100} // Max length for search input in select
-                      />
-                    </div>
-                    <SelectItem value="none">No Blog Post</SelectItem>
-                    {getFilteredOptions(blogOptions).length === 0 ? (
-                      <SelectItem value="no-match" disabled>
-                        No matching blog posts
-                      </SelectItem>
-                    ) : (
-                      getFilteredOptions(blogOptions).map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.name} {/* Only show name */}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                {createErrors.associationId && (
-                  <p className="text-destructive text-sm mt-1">
-                    {createErrors.associationId}
-                  </p>
-                )}
-              </div>
-            )}
-
             <DialogFooter>
               <Button
-                type="button"
                 variant="outline"
-                onClick={() => setIsCreateDialogOpen(false)}
-                disabled={isCreating}
-                className="hover:bg-primary"
+                onClick={() => setShowUploadDialog(false)}
+                disabled={uploadLoading}
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={isCreating}
-                className="hover:bg-primary"
-              >
-                {isCreating ? (
-                  <div className="flex items-center">
-                    <LoadingSpinner className="h-4 w-4 mr-2" /> Uploading...
-                  </div>
+              <Button onClick={onUpload} disabled={uploadLoading || !file}>
+                {uploadLoading ? (
+                  <>
+                    <LoadingSpinner className="h-4 w-4 mr-2" />
+                    Uploading...
+                  </>
                 ) : (
                   "Upload"
                 )}
               </Button>
             </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
 
-      {/* Update Image Dialog */}
-      <Dialog
-        open={isUpdateDialogOpen}
-        onOpenChange={(open) => {
-          setIsUpdateDialogOpen(open);
-          if (!open) {
-            setIsUpdating(false);
-            setUpdateForm({
-              id: "",
-              productId: null,
-              categoryId: null,
-              subCategoryId: null,
-              blogId: null,
-              isHeroImage: false, // Reset to false on close
-              isLogo: false,
-              isIcon: false,
-            });
-            setUpdateErrors({});
-            setSelectedUpdateAssociationType("none");
-            setFilterOptionsSearchQuery(""); // Clear search filter when dialog closes
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Image Information</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleUpdateImage} className="space-y-4">
-            <div>
-              <p className="block text-sm font-medium text-muted-foreground mb-1">
-                Image ID:{" "}
-                <span className="text-foreground font-semibold">
-                  {updateForm.id}
-                </span>
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="isHeroImage"
-                  checked={updateForm.isHeroImage}
-                  onCheckedChange={(checked: boolean) => {
-                    if (checked) {
-                      setSelectedUpdateAssociationType("none");
-                      setUpdateForm({
-                        ...updateForm,
-                        productId: null,
-                        categoryId: null,
-                        subCategoryId: null,
-                        blogId: null,
-                      });
-                    }
-                    setUpdateForm({
-                      ...updateForm,
-                      isHeroImage: checked,
-                      isLogo: checked ? false : updateForm.isLogo, // Uncheck others if this is checked
-                      isIcon: checked ? false : updateForm.isIcon, // Uncheck others if this is checked
-                    });
-                  }}
-                  disabled={isUpdating || loading}
-                />
-                <label htmlFor="isHeroImage" className="text-sm font-medium">
-                  Is Hero Image
-                </label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="isLogo"
-                  checked={updateForm.isLogo}
-                  onCheckedChange={(checked: boolean) => {
-                    if (checked) {
-                      setSelectedUpdateAssociationType("none");
-                      setUpdateForm({
-                        ...updateForm,
-                        productId: null,
-                        categoryId: null,
-                        subCategoryId: null,
-                        blogId: null,
-                      });
-                    }
-                    setUpdateForm({
-                      ...updateForm,
-                      isLogo: checked,
-                      isHeroImage: checked ? false : updateForm.isHeroImage, // Uncheck others if this is checked
-                      isIcon: checked ? false : updateForm.isIcon, // Uncheck others if this is checked
-                    });
-                  }}
-                  disabled={isUpdating || loading}
-                />
-                <label htmlFor="isLogo" className="text-sm font-medium">
-                  Is Logo
-                </label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="isIcon"
-                  checked={updateForm.isIcon}
-                  onCheckedChange={(checked: boolean) => {
-                    if (checked) {
-                      setSelectedUpdateAssociationType("none");
-                      setUpdateForm({
-                        ...updateForm,
-                        productId: null,
-                        categoryId: null,
-                        subCategoryId: null,
-                        blogId: null,
-                      });
-                    }
-                    setUpdateForm({
-                      ...updateForm,
-                      isIcon: checked,
-                      isHeroImage: checked ? false : updateForm.isHeroImage, // Uncheck others if this is checked
-                      isLogo: checked ? false : updateForm.isLogo, // Uncheck others if this is checked
-                    });
-                  }}
-                  disabled={isUpdating || loading}
-                />
-                <label htmlFor="isIcon" className="text-sm font-medium">
-                  Is Icon
-                </label>
-              </div>
-            </div>
-            <div className="pt-4 border-t border-border mt-4">
-              <label
-                htmlFor="updateAssociationType"
-                className="block text-sm font-medium text-foreground mb-1"
-              >
-                Change Association (Select one or 'None' to clear)
-              </label>
+        {/* Edit Dialog */}
+        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <Edit2 className="mr-2 h-6 w-6" />
+                Edit Image Type
+              </DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+              <Label htmlFor="edit-type">Image Type</Label>
               <Select
-                value={selectedUpdateAssociationType}
-                onValueChange={(
-                  value: typeof selectedUpdateAssociationType
-                ) => {
-                  setSelectedUpdateAssociationType(value);
-                  setUpdateForm((prev) => ({
-                    ...prev,
-                    productId: null,
-                    categoryId: null,
-                    subCategoryId: null,
-                    blogId: null,
-                  })); // Clear other IDs
-                  setFilterOptionsSearchQuery(""); // Clear search filter when association type changes
-                }}
-                disabled={
-                  isUpdating ||
-                  updateForm.isHeroImage ||
-                  updateForm.isLogo ||
-                  updateForm.isIcon ||
-                  loading
-                }
+                value={editType}
+                onValueChange={(v) => setEditType(v as ImageType)}
               >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select association type" />
+                <SelectTrigger id="edit-type">
+                  <SelectValue placeholder="Select Type" />
                 </SelectTrigger>
-                <SelectContent className="rounded-lg shadow-lg bg-popover">
-                  <SelectItem value="none">No Association</SelectItem>
-                  <SelectItem value="productId">Product</SelectItem>
-                  <SelectItem value="categoryId">Category</SelectItem>
-                  <SelectItem value="subCategoryId">Subcategory</SelectItem>
-                  <SelectItem value="blogId">Blog Post</SelectItem>
+                <SelectContent>
+                  {IMAGE_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t.charAt(0) + t.slice(1).toLowerCase()}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-
-            {selectedUpdateAssociationType === "productId" && (
-              <div>
-                <label
-                  htmlFor="updateProductId"
-                  className="block text-sm font-medium text-foreground mb-1"
-                >
-                  Product
-                </label>
-                <Select
-                  value={updateForm.productId ?? "none"}
-                  onValueChange={(value) =>
-                    setUpdateForm({
-                      ...updateForm,
-                      productId: value === "none" ? null : value,
-                    })
-                  }
-                  disabled={
-                    isUpdating ||
-                    productOptions.length === 0 ||
-                    updateForm.isHeroImage ||
-                    updateForm.isLogo ||
-                    updateForm.isIcon ||
-                    loading
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a product" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-lg shadow-lg bg-popover">
-                    <div className="p-2 sticky top-0 bg-popover z-10 border-b border-border">
-                      <Input
-                        placeholder="Search products..."
-                        value={filterOptionsSearchQuery}
-                        onChange={(e) =>
-                          setFilterOptionsSearchQuery(e.target.value)
-                        }
-                        className="w-full h-8"
-                        maxLength={100} // Max length for search input in select
-                      />
-                    </div>
-                    <SelectItem value="none">No Product</SelectItem>
-                    {getFilteredOptions(productOptions).length === 0 ? (
-                      <SelectItem value="no-match" disabled>
-                        No matching products
-                      </SelectItem>
-                    ) : (
-                      getFilteredOptions(productOptions).map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                {updateErrors.associationId && (
-                  <p className="text-destructive text-sm mt-1">
-                    {updateErrors.associationId}
-                  </p>
-                )}
-              </div>
-            )}
-            {selectedUpdateAssociationType === "categoryId" && (
-              <div>
-                <label
-                  htmlFor="updateCategoryId"
-                  className="block text-sm font-medium text-foreground mb-1"
-                >
-                  Category
-                </label>
-                <Select
-                  value={updateForm.categoryId ?? "none"}
-                  onValueChange={(value) =>
-                    setUpdateForm({
-                      ...updateForm,
-                      categoryId: value === "none" ? null : value,
-                    })
-                  }
-                  disabled={
-                    isUpdating ||
-                    categoryOptions.length === 0 ||
-                    updateForm.isHeroImage ||
-                    updateForm.isLogo ||
-                    updateForm.isIcon ||
-                    loading
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a category" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-lg shadow-lg bg-popover">
-                    <div className="p-2 sticky top-0 bg-popover z-10 border-b border-border">
-                      <Input
-                        placeholder="Search categories..."
-                        value={filterOptionsSearchQuery}
-                        onChange={(e) =>
-                          setFilterOptionsSearchQuery(e.target.value)
-                        }
-                        className="w-full h-8"
-                        maxLength={100} // Max length for search input in select
-                      />
-                    </div>
-                    <SelectItem value="none">No Category</SelectItem>
-                    {getFilteredOptions(categoryOptions).length === 0 ? (
-                      <SelectItem value="no-match" disabled>
-                        No matching categories
-                      </SelectItem>
-                    ) : (
-                      getFilteredOptions(categoryOptions).map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                {updateErrors.associationId && (
-                  <p className="text-destructive text-sm mt-1">
-                    {updateErrors.associationId}
-                  </p>
-                )}
-              </div>
-            )}
-            {selectedUpdateAssociationType === "subCategoryId" && (
-              <div>
-                <label
-                  htmlFor="updateSubCategoryId"
-                  className="block text-sm font-medium text-foreground mb-1"
-                >
-                  Subcategory
-                </label>
-                <Select
-                  value={updateForm.subCategoryId ?? "none"}
-                  onValueChange={(value) =>
-                    setUpdateForm({
-                      ...updateForm,
-                      subCategoryId: value === "none" ? null : value,
-                    })
-                  }
-                  disabled={
-                    isUpdating ||
-                    subCategoryOptions.length === 0 ||
-                    updateForm.isHeroImage ||
-                    updateForm.isLogo ||
-                    updateForm.isIcon ||
-                    loading
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a subcategory" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-lg shadow-lg bg-popover">
-                    <div className="p-2 sticky top-0 bg-popover z-10 border-b border-border">
-                      <Input
-                        placeholder="Search subcategories..."
-                        value={filterOptionsSearchQuery}
-                        onChange={(e) =>
-                          setFilterOptionsSearchQuery(e.target.value)
-                        }
-                        className="w-full h-8"
-                        maxLength={100} // Max length for search input in select
-                      />
-                    </div>
-                    <SelectItem value="none">No Subcategory</SelectItem>
-                    {getFilteredOptions(subCategoryOptions).length === 0 ? (
-                      <SelectItem value="no-match" disabled>
-                        No matching subcategories
-                      </SelectItem>
-                    ) : (
-                      getFilteredOptions(subCategoryOptions).map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                {updateErrors.associationId && (
-                  <p className="text-destructive text-sm mt-1">
-                    {updateErrors.associationId}
-                  </p>
-                )}
-              </div>
-            )}
-            {selectedUpdateAssociationType === "blogId" && (
-              <div>
-                <label
-                  htmlFor="updateBlogId"
-                  className="block text-sm font-medium text-foreground mb-1"
-                >
-                  Blog Post
-                </label>
-                <Select
-                  value={updateForm.blogId ?? "none"}
-                  onValueChange={(value) =>
-                    setUpdateForm({
-                      ...updateForm,
-                      blogId: value === "none" ? null : value,
-                    })
-                  }
-                  disabled={
-                    isUpdating ||
-                    blogOptions.length === 0 ||
-                    updateForm.isHeroImage ||
-                    updateForm.isLogo ||
-                    updateForm.isIcon ||
-                    loading
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a blog post" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-lg shadow-lg bg-popover">
-                    <div className="p-2 sticky top-0 bg-popover z-10 border-b border-border">
-                      <Input
-                        placeholder="Search blog posts..."
-                        value={filterOptionsSearchQuery}
-                        onChange={(e) =>
-                          setFilterOptionsSearchQuery(e.target.value)
-                        }
-                        className="w-full h-8"
-                        maxLength={100} // Max length for search input in select
-                      />
-                    </div>
-                    <SelectItem value="none">No Blog Post</SelectItem>
-                    {getFilteredOptions(blogOptions).length === 0 ? (
-                      <SelectItem value="no-match" disabled>
-                        No matching blog posts
-                      </SelectItem>
-                    ) : (
-                      getFilteredOptions(blogOptions).map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                {updateErrors.associationId && (
-                  <p className="text-destructive text-sm mt-1">
-                    {updateErrors.associationId}
-                  </p>
-                )}
-              </div>
-            )}
-
             <DialogFooter>
               <Button
-                type="button"
                 variant="outline"
-                onClick={() => setIsUpdateDialogOpen(false)}
-                disabled={isUpdating}
-                className="hover:bg-primary"
+                onClick={() => setShowEditDialog(false)}
+                disabled={editLoading}
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={isUpdating}
-                className="hover:bg-primary"
-              >
-                {isUpdating ? (
-                  <div className="flex items-center">
-                    <LoadingSpinner className="h-4 w-4 mr-2" /> Updating...
-                  </div>
+              <Button onClick={onSaveEdit} disabled={editLoading}>
+                {editLoading ? (
+                  <>
+                    <LoadingSpinner className="h-4 w-4 mr-2" />
+                    Saving...
+                  </>
                 ) : (
-                  "Update Image"
+                  "Save"
                 )}
               </Button>
             </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
 
-      {/* Delete Image Dialog */}
-      <Dialog
-        open={isDeleteDialogOpen}
-        onOpenChange={(open) => {
-          setIsDeleteDialogOpen(open);
-          if (!open) setIsDeleting(false);
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Confirm Deletion</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
+        {/* Delete Confirmation Dialog */}
+        <Dialog
+          open={showDeleteConfirmation}
+          onOpenChange={setShowDeleteConfirmation}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <Trash2 className="mr-2 h-6 w-6 text-destructive" />
+                Delete Image
+              </DialogTitle>
+            </DialogHeader>
             <p className="text-muted-foreground">
-              Are you sure you want to delete this image? This action cannot be
-              undone.
+              Are you sure you want to permanently delete this image? This
+              action cannot be undone.
             </p>
             <DialogFooter>
               <Button
-                type="button"
                 variant="outline"
-                onClick={() => setIsDeleteDialogOpen(false)}
-                disabled={isDeleting}
-                className="hover:bg-primary"
+                onClick={cancelDelete}
+                disabled={deletingImage}
               >
                 Cancel
               </Button>
               <Button
                 variant="destructive"
-                onClick={handleConfirmDeleteImage}
-                disabled={isDeleting}
-                className="hover:bg-destructive/80"
+                onClick={executeDelete}
+                disabled={deletingImage}
               >
-                {isDeleting ? (
-                  <div className="flex items-center">
-                    <LoadingSpinner className="h-4 w-4 mr-1 text-destructive" />{" "}
-                    Deleting...
-                  </div>
-                ) : (
+                {deletingImage ? (
                   <>
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Delete Image
+                    <LoadingSpinner className="h-4 w-4 mr-2" />
+                    Deleting...
                   </>
+                ) : (
+                  "Delete"
                 )}
               </Button>
             </DialogFooter>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+
+        {/* Preview Dialog */}
+        <Dialog
+          open={!!previewImage}
+          onOpenChange={() => setPreviewImage(null)}
+        >
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>{previewImage?.type} Image Preview</DialogTitle>
+            </DialogHeader>
+            {previewImage && (
+              <div className="flex flex-col items-center">
+                <img
+                  src={previewImage.url}
+                  alt={`${previewImage.type} image ${previewImage.id}`}
+                  className="max-h-[60vh] w-auto rounded-lg"
+                />
+                <div className="mt-4 w-full flex justify-between text-sm text-muted-foreground">
+                  <span>ID: {previewImage.id}</span>
+                  <span>
+                    Created: {new Date(previewImage.createdAt).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">Close</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 };

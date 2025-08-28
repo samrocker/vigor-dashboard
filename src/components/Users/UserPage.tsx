@@ -640,7 +640,7 @@ const UserPage = () => {
                     className="bg-green-500 hover:bg-green-600 text-white"
                     disabled={isRecovering}
                   >
-                    {isRecovering ? "Recovering..." : "Recover User"}
+                    {isRecovering ? "Activating User..." : "Activate User"}
                   </Button>
                 ) : (
                   <Dialog
@@ -649,7 +649,7 @@ const UserPage = () => {
                   >
                     <DialogTrigger asChild>
                       <Button variant="destructive" disabled={isSoftDeleting}>
-                        Soft Delete User
+                        Deactivate User
                       </Button>
                     </DialogTrigger>
                     <DialogContent>

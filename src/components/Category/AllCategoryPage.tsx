@@ -2,7 +2,7 @@
 import { ApiResponse, axiosInstance } from "@/lib/axios";
 import { CategoriesApiResponse, Category } from "@/types/schemas";
 import React, { useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation"; // Import useRouter
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardHeader,
@@ -30,7 +30,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { toast } from "sonner"; // Changed from react-toastify
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import {
   Calendar,
@@ -44,9 +44,9 @@ import {
   Eye,
   RefreshCw,
   Info,
-} from "lucide-react"; // Added RefreshCw and Info icon
-import { Skeleton } from "@/components/ui/skeleton"; // Added Skeleton import
-import { motion } from "framer-motion"; // Added motion import
+} from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { motion } from "framer-motion";
 import {
   Select,
   SelectTrigger,
@@ -68,53 +68,44 @@ function formatDate(dateString: string) {
 }
 
 const AllCategoryPage = () => {
-  // State variables for categories data and loading/error states
+  // State for categories list and loading/error states
   const [categories, setCategories] = useState<Category[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
-  // State for create form
+  // State for create form and image
   const [createForm, setCreateForm] = useState({ name: "", description: "" });
   const [isCreating, setIsCreating] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  // NEW: State for the category image file
   const [createImageFile, setCreateImageFile] = useState<File | null>(null);
 
-  // State for update form
+  // State for update form and image
   const [updateForm, setUpdateForm] = useState({
     id: "",
     name: "",
     description: "",
+    imageFile: null as File | null, // <-- for update image
   });
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
 
-  // State for delete operation
+  // State for delete
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [categoryToDeleteId, setCategoryToDeleteId] = useState<string | null>(
-    null
-  );
+  const [categoryToDeleteId, setCategoryToDeleteId] = useState<string | null>(null);
 
   // State for search and sorting
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<keyof Category | null>("createdAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-  const [sortDropdown, setSortDropdown] = useState<"name" | "createdAt">(
-    "createdAt"
-  ); // For sort dropdown
+  const [sortDropdown, setSortDropdown] = useState<"name" | "createdAt">("createdAt");
 
-  const [createFormErrors, setCreateFormErrors] = useState<{ name?: string }>(
-    {}
-  );
-  const [updateFormErrors, setUpdateFormErrors] = useState<{ name?: string }>(
-    {}
-  );
+  const [createFormErrors, setCreateFormErrors] = useState<{ name?: string }>({});
+  const [updateFormErrors, setUpdateFormErrors] = useState<{ name?: string }>({});
 
   // Initialize useRouter for navigation
   const router = useRouter();
 
-  // Effect hook to fetch categories on component mount
   useEffect(() => {
     fetchCategoriesData();
   }, []);
@@ -122,83 +113,63 @@ const AllCategoryPage = () => {
   function validateCategoryForm(name: string) {
     const errors: { name?: string } = {};
     if (!name.trim()) errors.name = "Name is required";
-    else if (name.trim().length < 2)
-      errors.name = "Name must be at least 2 characters";
-    else if (name.trim().length > 100)
-      errors.name = "Name must be at most 100 characters";
+    else if (name.trim().length < 2) errors.name = "Name must be at least 2 characters";
+    else if (name.trim().length > 100) errors.name = "Name must be at most 100 characters";
     return errors;
   }
 
-  // Function to fetch categories data from the API
   const fetchCategoriesData = async () => {
-    setLoading(true); // Set loading to true before fetching
+    setLoading(true);
     try {
-      const response = await axiosInstance.get<CategoriesApiResponse>(
-        "/public/category"
-      );
+      const response = await axiosInstance.get<CategoriesApiResponse>("/public/category");
       if (response.data.status === "success" && response.data.data) {
-        setCategories(response.data.data.categories || []); // Update categories state
-        setTotal(response.data.data.total || 0); // Update total count
+        setCategories(response.data.data.categories || []);
+        setTotal(response.data.data.total || 0);
       } else {
-        toast.error(response.data.message || "Failed to fetch categories"); // Show error toast
+        toast.error(response.data.message || "Failed to fetch categories");
       }
     } catch (err: any) {
       toast.error(
         err.message || "An unexpected error occurred while fetching categories."
-      ); // Show unexpected error toast
+      );
     } finally {
-      setLoading(false); // Set loading to false after fetch completes
+      setLoading(false);
     }
   };
 
-  // Memoized filtered and sorted categories for performance optimization
   const filteredAndSortedCategories = useMemo(() => {
     let currentCategories = [...categories];
-
-    // Apply search query filter
     if (searchQuery) {
       currentCategories = currentCategories.filter(
         (category) =>
           category.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           (category.description &&
-            category.description
-              .toLowerCase()
-              .includes(searchQuery.toLowerCase()))
+            category.description.toLowerCase().includes(searchQuery.toLowerCase()))
       );
     }
-
-    // Apply sorting based on sortKey and sortDirection
     if (sortKey) {
       currentCategories.sort((a, b) => {
         const aValue = a[sortKey];
         const bValue = b[sortKey];
-
-        // Handle null or undefined values for sorting
-        if (aValue === null || aValue === undefined)
-          return sortDirection === "asc" ? -1 : 1;
-        if (bValue === null || bValue === undefined)
-          return sortDirection === "asc" ? 1 : -1;
-
-        // String comparison for name
+        if (aValue === null || aValue === undefined) return sortDirection === "asc" ? -1 : 1;
+        if (bValue === null || bValue === undefined) return sortDirection === "asc" ? 1 : -1;
         if (typeof aValue === "string" && typeof bValue === "string") {
           return sortDirection === "asc"
             ? aValue.localeCompare(bValue)
             : bValue.localeCompare(aValue);
         }
-        // Date comparison for createdAt/updatedAt
         if (sortKey === "createdAt" || sortKey === "updatedAt") {
           const dateA = new Date(aValue as string).getTime();
           const dateB = new Date(bValue as string).getTime();
           return sortDirection === "asc" ? dateA - dateB : dateB - dateA;
         }
-        return 0; // Default return for other types or if values are equal
+        return 0;
       });
     }
-
     return currentCategories;
-  }, [categories, searchQuery, sortKey, sortDirection]); // Dependencies for memoization
+  }, [categories, searchQuery, sortKey, sortDirection]);
 
-  // MODIFIED: Handler for creating a new category and uploading an image
+  // ----------- IMAGE-UPLOAD-FIRST WORKFLOW FOR CREATE ------------
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateFormErrors({});
@@ -209,50 +180,40 @@ const AllCategoryPage = () => {
     }
     setIsCreating(true);
     try {
-      // Step 1: Create the category
-      const response = await axiosInstance.post("/admin/category", createForm);
-
-      if (response.data.status === "success" && response.data.data) {
-        const newCategory = response.data.data.category;
-
-        // Step 2: Upload the image if one is selected
-        if (createImageFile) {
-          const formData = new FormData();
-          formData.append("image", createImageFile);
-          // Using 'productId' as the key, as specified in the form-data screenshot
-          formData.append("categoryId", newCategory.id);
-
-          try {
-            const imageResponse = await axiosInstance.post(
-              "/admin/image",
-              formData,
-              {
-                headers: {
-                  "Content-Type": "multipart/form-data",
-                },
-              }
-            );
-            if (imageResponse.data.status === "success") {
-            } else {
-              toast.error(
-                imageResponse.data.message || "Failed to upload image"
-              );
-            }
-          } catch (imgErr: any) {
-            toast.error(
-              imgErr?.response?.data?.message ||
-                "Category was created, but image upload failed."
-            );
-          }
+      let imageId: string | undefined;
+      if (createImageFile) {
+        const formData = new FormData();
+        formData.append("image", createImageFile);
+        const imageRes = await axiosInstance.post("/admin/image", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        if (
+          imageRes?.data?.status === "success" &&
+          imageRes?.data?.data?.image?.id
+        ) {
+          imageId = imageRes.data.data.image.id as string;
+        } else {
+          toast.error(imageRes?.data?.message || "Failed to upload image");
+          setIsCreating(false);
+          return;
         }
-
-        // Step 3: Reset state and refetch data
+      }
+      const categoryRes = await axiosInstance.post("/admin/category", {
+        name: createForm.name,
+        description: createForm.description,
+        imageId: imageId || "",
+      });
+      if (
+        categoryRes.data.status === "success" &&
+        categoryRes.data.data?.category
+      ) {
+        toast.success("Category created successfully");
         setCreateForm({ name: "", description: "" });
-        setCreateImageFile(null); // Reset image file state
+        setCreateImageFile(null);
         setIsCreateDialogOpen(false);
-        fetchCategoriesData(); // Refresh the list
+        fetchCategoriesData();
       } else {
-        toast.error(response.data.message || "Failed to create category");
+        toast.error(categoryRes.data.message || "Failed to create category");
       }
     } catch (err: any) {
       let apiMessage =
@@ -260,7 +221,10 @@ const AllCategoryPage = () => {
         err?.response?.data?.error ||
         err?.message ||
         "Something went wrong. Please try again.";
-      if (apiMessage.toLowerCase().includes("duplicate")) {
+      if (
+        typeof apiMessage === "string" &&
+        apiMessage.toLowerCase().includes("duplicate")
+      ) {
         apiMessage = "A category with this name already exists.";
       }
       toast.error(apiMessage);
@@ -269,17 +233,17 @@ const AllCategoryPage = () => {
     }
   };
 
-  // Function to open the update dialog with category data
   const openUpdateDialog = (category: Category) => {
     setUpdateForm({
       id: category.id,
       name: category.name,
       description: category.description || "",
+      imageFile: null,
     });
-    setIsUpdateDialogOpen(true); // Open update dialog
+    setIsUpdateDialogOpen(true);
   };
 
-  // Handler for updating an existing category
+  // Edit: upload image (if new), then use that imageId in PATCH
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setUpdateFormErrors({});
@@ -290,22 +254,39 @@ const AllCategoryPage = () => {
     }
     setIsUpdating(true);
     try {
+      let imageId: string | undefined;
+      if (updateForm.imageFile) {
+        const formData = new FormData();
+        formData.append("image", updateForm.imageFile);
+        const imageRes = await axiosInstance.post("/admin/image", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        if (
+          imageRes?.data?.status === "success" &&
+          imageRes?.data?.data?.image?.id
+        ) {
+          imageId = imageRes.data.data.image.id as string;
+        } else {
+          toast.error(imageRes?.data?.message || "Failed to upload image");
+          setIsUpdating(false);
+          return;
+        }
+      }
+      const payload: any = {
+        name: updateForm.name,
+        description: updateForm.description,
+      };
+      if (imageId) payload.imageId = imageId;
+
       const response = await axiosInstance.patch(
         `/admin/category/${updateForm.id}`,
-        {
-          name: updateForm.name,
-          description: updateForm.description,
-        }
+        payload
       );
       if (response.data.status === "success") {
         setCategories(
           categories.map((cat) =>
             cat.id === updateForm.id
-              ? {
-                  ...cat,
-                  name: updateForm.name,
-                  description: updateForm.description,
-                }
+              ? { ...cat, name: updateForm.name, description: updateForm.description }
               : cat
           )
         );
@@ -320,7 +301,10 @@ const AllCategoryPage = () => {
         err?.response?.data?.error ||
         err?.message ||
         "Something went wrong. Please try again.";
-      if (apiMessage.toLowerCase().includes("duplicate")) {
+      if (
+        typeof apiMessage === "string" &&
+        apiMessage.toLowerCase().includes("duplicate")
+      ) {
         apiMessage = "A category with this name already exists.";
       }
       toast.error(apiMessage);
@@ -329,53 +313,46 @@ const AllCategoryPage = () => {
     }
   };
 
-  // Handler to initiate category deletion
   const handleDelete = (id: string) => {
-    setCategoryToDeleteId(id); // Set ID of category to delete
-    setIsDeleteDialogOpen(true); // Open delete confirmation dialog
+    setCategoryToDeleteId(id);
+    setIsDeleteDialogOpen(true);
   };
 
-  // Handler to confirm and execute category deletion
   const handleConfirmDelete = async () => {
-    if (!categoryToDeleteId) return; // Do nothing if no category ID is set
-
-    setIsDeleting(categoryToDeleteId); // Set deleting state for the specific category
+    if (!categoryToDeleteId) return;
+    setIsDeleting(categoryToDeleteId);
     try {
-      const response = await axiosInstance.delete(
-        `/admin/category/${categoryToDeleteId}`
-      );
+      const response = await axiosInstance.delete(`/admin/category/${categoryToDeleteId}`);
       if (response.data.status === "success") {
-        // Remove the deleted category from local state
-        setCategories(
-          categories.filter((cat) => cat.id !== categoryToDeleteId)
-        );
-        setTotal(total - 1); // Decrement total count
-        toast.success("Category deleted successfully"); // Show success toast
+        setCategories(categories.filter((cat) => cat.id !== categoryToDeleteId));
+        setTotal(total - 1);
+        toast.success("Category deleted successfully");
       } else {
-        toast.error(response.data.message || "Failed to delete category"); // Show error toast
+        toast.error(response.data.message || "Failed to delete category");
       }
     } catch (err: any) {
-      toast.error(
-        err.message || "An unexpected error occurred while deleting category."
-      ); // Show unexpected error toast
+      const apiMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "An unexpected error occurred while deleting category.";
+      toast.error(apiMessage);
     } finally {
-      setIsDeleting(null); // Reset deleting state
-      setIsDeleteDialogOpen(false); // Close dialog
-      setCategoryToDeleteId(null); // Clear category ID
+      setIsDeleting(null);
+      setIsDeleteDialogOpen(false);
+      setCategoryToDeleteId(null);
     }
   };
 
-  // Handler for sorting table columns
   const handleSort = (key: keyof Category) => {
     if (sortKey === key) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc"); // Toggle sort direction
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
-      setSortKey(key); // Set new sort key
-      setSortDirection("asc"); // Default to ascending for new sort key
+      setSortKey(key);
+      setSortDirection("asc");
     }
   };
 
-  // Renders sort icon based on current sort key and direction
   const renderSortIcon = (key: keyof Category) => {
     if (sortKey !== key) return null;
     return sortDirection === "asc" ? (
@@ -385,7 +362,6 @@ const AllCategoryPage = () => {
     );
   };
 
-  // Function to handle navigation to category details page
   const handleViewDetails = (categoryId: string) => {
     router.push(`/category/${categoryId}`);
   };
@@ -414,7 +390,6 @@ const AllCategoryPage = () => {
                 </p>
               </div>
             </div>
-            {/* Dialog for creating a new category - remains here */}
             <Dialog
               open={isCreateDialogOpen}
               onOpenChange={setIsCreateDialogOpen}
@@ -442,18 +417,14 @@ const AllCategoryPage = () => {
                       type="text"
                       value={createForm.name}
                       onChange={(e) =>
-                        setCreateForm({
-                          ...createForm,
-                          name: e.target.value,
-                        })
+                        setCreateForm({ ...createForm, name: e.target.value })
                       }
                       placeholder="Enter category name"
                       disabled={isCreating || loading}
                       required
-                      maxLength={100} // Added max length for category name
+                      maxLength={100}
                     />
                   </div>
-                  {/* NEW: File input for category image */}
                   <div>
                     <label
                       htmlFor="createImage"
@@ -495,7 +466,7 @@ const AllCategoryPage = () => {
                       placeholder="Enter category description"
                       disabled={isCreating || loading}
                       rows={3}
-                      maxLength={500} // Added max length for description
+                      maxLength={500}
                     />
                     {createFormErrors.name && (
                       <span className="text-destructive text-xs mt-1 block">
@@ -530,7 +501,6 @@ const AllCategoryPage = () => {
         </div>
       </motion.div>
 
-      {/* Main content area with stat cards, search, filters, and category table */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -562,10 +532,9 @@ const AllCategoryPage = () => {
               </p>
             </CardContent>
           </Card>
-          {/* You can add more stat cards here if needed, e.g., for active categories, drafts, etc. */}
         </motion.div>
 
-        {/* Search Input and Sort Dropdown - remains the same */}
+        {/* Search Input and Sort Dropdown */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -583,7 +552,7 @@ const AllCategoryPage = () => {
                   className="pl-10 pr-4 py-2"
                   aria-label="Search categories"
                   disabled={loading}
-                  maxLength={100} // Added max length for search query
+                  maxLength={100}
                 />
               </div>
               <div className="flex flex-row gap-4 items-center">
@@ -632,7 +601,8 @@ const AllCategoryPage = () => {
           </Card>
         </motion.div>
 
-        {/* Conditional rendering based on loading or data presence */}
+        {/* Table/skeleton/UI/Main content is unchanged from your code, including table/search/delete/edit */}
+
         {loading ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -794,7 +764,7 @@ const AllCategoryPage = () => {
         )}
       </motion.div>
 
-      {/* Update Category Dialog - remains the same */}
+      {/* ------- UPDATE CATEGORY DIALOG -------- */}
       <Dialog open={isUpdateDialogOpen} onOpenChange={setIsUpdateDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -818,7 +788,28 @@ const AllCategoryPage = () => {
                 placeholder="Enter category name"
                 disabled={isUpdating || loading}
                 required
-                maxLength={100} // Added max length for category name
+                maxLength={100}
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="updateImage"
+                className="block text-sm font-medium text-foreground mb-1"
+              >
+                Replace Image
+              </label>
+              <Input
+                id="updateImage"
+                type="file"
+                accept="image/*"
+                onChange={(e) =>
+                  setUpdateForm({
+                    ...updateForm,
+                    imageFile: e.target.files ? e.target.files[0] : null,
+                  })
+                }
+                className="h-fit file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                disabled={isUpdating || loading}
               />
             </div>
             <div>
@@ -837,7 +828,7 @@ const AllCategoryPage = () => {
                 placeholder="Enter category description"
                 disabled={isUpdating || loading}
                 rows={3}
-                maxLength={500} // Added max length for description
+                maxLength={500}
               />
               {updateFormErrors.name && (
                 <span className="text-destructive text-xs mt-1 block">
@@ -869,7 +860,7 @@ const AllCategoryPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Category Dialog - remains the same */}
+      {/* Delete Category Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
