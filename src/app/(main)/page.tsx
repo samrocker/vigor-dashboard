@@ -8,19 +8,6 @@ import { motion } from "framer-motion"; // Added motion import
 
 export default function Home() {
   const router = useRouter();
-  const accessToken = Cookies.get("accessToken");
-
-  // useEffect(() => {
-  //   if (!accessToken) {
-  //     router.push("/login");
-  //   }
-  // }, [router]);
-
-  // useEffect(() => {
-  //   if (accessToken) {
-  //     router.push("/dashboard");
-  //   }
-  // }, [router]);
 
   useEffect(() => {
     router.push("/users");

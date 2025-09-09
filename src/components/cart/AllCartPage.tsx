@@ -8,26 +8,17 @@ import {
   ShoppingCart,
   User as UserIcon,
   DollarSign,
-  Calendar,
-  Filter,
+  Package,
   ArrowUp,
   ArrowDown,
   Eye,
-  Info, // Kept for "No carts found" scenario, as it's a specific empty state.
-  Package,
 } from "lucide-react";
 import { getAccessToken } from "@/lib/auth";
 import { ApiResponse, axiosInstance } from "@/lib/axios";
-import { motion, AnimatePresence } from "framer-motion"; // AnimatePresence still relevant for table rows
+import { motion, AnimatePresence } from "framer-motion";
 
 // Shadcn UI components
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableHeader,
@@ -38,32 +29,25 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { toast } from "sonner"; // For toast notifications
+import { toast } from "sonner";
 
-// --- Type Definitions ---
-
-// User interface for fetching user names
 interface UserForCart {
   id: string;
   name: string;
   email: string;
 }
 
-// Product interface for fetching product names
 interface ProductForCartItem {
   id: string;
   name: string;
 }
 
-// Variant interface for fetching variant names
 interface VariantForCartItem {
   id: string;
   name: string;
   value: { [key: string]: string };
 }
 
-// Cart Item interface
 interface CartItem {
   id: string;
   cartId: string;
@@ -77,7 +61,6 @@ interface CartItem {
   variant?: VariantForCartItem;
 }
 
-// Main Cart interface
 export interface Cart {
   id: string;
   userId: string;
@@ -99,7 +82,6 @@ export interface CartsApiResponse extends ApiResponse {
   data: CartsData;
 }
 
-// --- Utility Functions ---
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -209,15 +191,12 @@ const SkeletonTableRow = () => (
 const AllCartsPage = () => {
   const [allCarts, setAllCarts] = useState<Cart[]>([]);
   const [loading, setLoading] = useState(true);
-  // Removed error state: const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCartsCount, setTotalCartsCount] = useState(0);
-
-  // Filter states
   const [searchQuery, setSearchQuery] = useState("");
-
-  // Sorting states
+  const [startDate, setStartDate] = useState<string | null>(null);
+  const [endDate, setEndDate] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<
     keyof Cart | "totalAmount" | "items" | null
   >("createdAt");
@@ -226,27 +205,26 @@ const AllCartsPage = () => {
   const router = useRouter();
   const token = getAccessToken();
 
-  // Fetch all carts
+  // Fetch all carts with date filtering
   const fetchAllCarts = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await axiosInstance.get<CartsApiResponse>(
-        "/admin/cart?includeRelations=true"
-      );
+      let url = "/admin/cart?includeRelations=true";
+      if (startDate) url += `&startDate=${encodeURIComponent(startDate)}`;
+      if (endDate) url += `&endDate=${encodeURIComponent(endDate)}`;
+      const response = await axiosInstance.get<CartsApiResponse>(url);
       const data = response.data.data;
       setAllCarts(data?.carts || []);
       setTotalCartsCount(data?.total || 0);
-      // Removed setError(null);
     } catch (err: any) {
       setAllCarts([]);
-      toast.error(err.message || "Failed to fetch carts. Please try again."); // Display toast error
+      toast.error(err.message || "Failed to fetch carts. Please try again.");
       console.error("Fetch carts error:", err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [startDate, endDate]);
 
-  // Initial data fetch on component mount
   useEffect(() => {
     if (!token) {
       router.push("/login");
@@ -255,11 +233,8 @@ const AllCartsPage = () => {
     fetchAllCarts();
   }, [token, router, fetchAllCarts]);
 
-  // Memoized filtered and paginated carts
   const filteredAndPaginatedCarts = useMemo(() => {
     let currentCarts = [...allCarts];
-
-    // 1. Apply Search Filter
     if (searchQuery) {
       currentCarts = currentCarts.filter((cart) => {
         if (cart.id.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -273,7 +248,9 @@ const AllCartsPage = () => {
           cart.items.some(
             (item) =>
               item.product?.name &&
-              item.product.name.toLowerCase().includes(searchQuery.toLowerCase())
+              item.product.name
+                .toLowerCase()
+                .includes(searchQuery.toLowerCase())
           )
         )
           return true;
@@ -281,15 +258,15 @@ const AllCartsPage = () => {
           cart.items.some(
             (item) =>
               item.variant?.name &&
-              item.variant.name.toLowerCase().includes(searchQuery.toLowerCase())
+              item.variant.name
+                .toLowerCase()
+                .includes(searchQuery.toLowerCase())
           )
         )
           return true;
         return false;
       });
     }
-
-    // 2. Apply Sorting
     if (sortKey) {
       currentCarts.sort((a, b) => {
         if (sortKey === "user") {
@@ -322,6 +299,11 @@ const AllCartsPage = () => {
         if (bValue === null || bValue === undefined)
           return sortDirection === "asc" ? 1 : -1;
         if (typeof aValue === "string" && typeof bValue === "string") {
+          if (sortKey === "createdAt" || sortKey === "updatedAt") {
+            const dateA = new Date(aValue as string).getTime();
+            const dateB = new Date(bValue as string).getTime();
+            return sortDirection === "asc" ? dateA - dateB : dateB - dateA;
+          }
           return sortDirection === "asc"
             ? aValue.localeCompare(bValue)
             : bValue.localeCompare(aValue);
@@ -329,28 +311,20 @@ const AllCartsPage = () => {
         if (typeof aValue === "number" && typeof bValue === "number") {
           return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
         }
-        if (sortKey === "createdAt" || sortKey === "updatedAt") {
-          const dateA = new Date(aValue as string).getTime();
-          const dateB = new Date(bValue as string).getTime();
-          return sortDirection === "asc" ? dateA - dateB : dateB - dateA;
-        }
         return 0;
       });
     }
-
-    // 3. Apply Pagination
     const cartsPerPage = 10;
     const newTotalPages = Math.ceil(currentCarts.length / cartsPerPage);
     setTotalPages(newTotalPages > 0 ? newTotalPages : 1);
-
     const startIndex = (currentPage - 1) * cartsPerPage;
     const endIndex = startIndex + cartsPerPage;
-
     return currentCarts.slice(startIndex, endIndex);
   }, [allCarts, searchQuery, sortKey, sortDirection, currentPage]);
 
   // --- Handlers ---
   const handleRefresh = () => {
+    setCurrentPage(1); // reset to page 1 when changing filters
     fetchAllCarts();
   };
 
@@ -383,7 +357,6 @@ const AllCartsPage = () => {
     router.push(`/cart/${cartId}`);
   };
 
-  // --- Render ---
   return (
     <motion.div
       className="min-h-screen bg-background"
@@ -417,6 +390,62 @@ const AllCartsPage = () => {
 
       {/* Main Content Area */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* --- Filter/search bar: search and date filters side by side --- */}
+        <Card className="mb-8 p-4 sm:p-6">
+          <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
+            {/* Search Input */}
+            <div className="relative w-full lg:w-1/2 flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search by Cart ID, User Name, Product Name, or Variant Name..."
+                value={searchQuery}
+                onChange={handleSearch}
+                className="w-full pl-10 pr-4 py-2"
+                aria-label="Search carts"
+                disabled={loading}
+              />
+            </div>
+
+            {/* Date Filters and Refresh */}
+            <div className="flex flex-col sm:flex-row gap-2 lg:gap-4 items-center">
+              <Input
+                type="date"
+                value={startDate ?? ""}
+                onChange={(e) =>
+                  setStartDate(e.target.value ? e.target.value : null)
+                }
+                aria-label="Start date"
+                disabled={loading}
+                className="w-[140px]"
+              />
+              <span className="sm:mx-1">to</span>
+              <Input
+                type="date"
+                value={endDate ?? ""}
+                onChange={(e) =>
+                  setEndDate(e.target.value ? e.target.value : null)
+                }
+                aria-label="End date"
+                disabled={loading}
+                className="w-[140px]"
+              />
+              <Button
+                onClick={handleRefresh}
+                disabled={loading}
+                variant="outline"
+                className="flex items-center gap-2 hover:bg-primary"
+                aria-label="Refresh cart list"
+              >
+                <RefreshCw
+                  className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+                />
+                Apply
+              </Button>
+            </div>
+          </div>
+        </Card>
+
         {/* Stats Cards */}
         {loading ? (
           <motion.div
@@ -485,7 +514,8 @@ const AllCartsPage = () => {
                         (sum, cart) =>
                           sum +
                           cart.items.reduce(
-                            (itemSum, item) => itemSum + item.quantity * item.price,
+                            (itemSum, item) =>
+                              itemSum + item.quantity * item.price,
                             0
                           ),
                         0
@@ -512,39 +542,6 @@ const AllCartsPage = () => {
             </motion.div>
           </motion.div>
         )}
-
-          <Card className="mb-8 p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-              <div className="relative w-full sm:w-auto flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <Input
-                  type="text"
-                  placeholder="Search by Cart ID, User Name, Product Name, or Variant Name..."
-                  value={searchQuery}
-                  onChange={handleSearch}
-                  className="w-full pl-10 pr-4 py-2"
-                  aria-label="Search carts"
-                  disabled={loading}
-                />
-              </div>
-              <div className="flex flex-col sm:flex-row gap-4 items-center">
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button
-                    onClick={handleRefresh}
-                    disabled={loading}
-                    variant="outline"
-                    className="flex items-center gap-2 hover:bg-primary"
-                    aria-label="Refresh cart list"
-                  >
-                    <RefreshCw
-                      className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
-                    />
-                    Refresh
-                  </Button>
-                </motion.div>
-              </div>
-            </div>
-          </Card>
 
         {/* Carts Table */}
         {loading ? (

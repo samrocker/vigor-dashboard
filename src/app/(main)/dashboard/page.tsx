@@ -12,8 +12,6 @@ const DashboardPage = () => {
 
   if (accessToken) {
     router.push("/users");
-  } else {
-    router.push("/login");
   }
 
   return <LoadingSpinner />;
