@@ -92,16 +92,24 @@ const AllCategoryPage = () => {
   // State for delete
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [categoryToDeleteId, setCategoryToDeleteId] = useState<string | null>(null);
+  const [categoryToDeleteId, setCategoryToDeleteId] = useState<string | null>(
+    null
+  );
 
   // State for search and sorting
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<keyof Category | null>("createdAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-  const [sortDropdown, setSortDropdown] = useState<"name" | "createdAt">("createdAt");
+  const [sortDropdown, setSortDropdown] = useState<"name" | "createdAt">(
+    "createdAt"
+  );
 
-  const [createFormErrors, setCreateFormErrors] = useState<{ name?: string }>({});
-  const [updateFormErrors, setUpdateFormErrors] = useState<{ name?: string }>({});
+  const [createFormErrors, setCreateFormErrors] = useState<{ name?: string }>(
+    {}
+  );
+  const [updateFormErrors, setUpdateFormErrors] = useState<{ name?: string }>(
+    {}
+  );
 
   // Initialize useRouter for navigation
   const router = useRouter();
@@ -113,15 +121,19 @@ const AllCategoryPage = () => {
   function validateCategoryForm(name: string) {
     const errors: { name?: string } = {};
     if (!name.trim()) errors.name = "Name is required";
-    else if (name.trim().length < 2) errors.name = "Name must be at least 2 characters";
-    else if (name.trim().length > 100) errors.name = "Name must be at most 100 characters";
+    else if (name.trim().length < 2)
+      errors.name = "Name must be at least 2 characters";
+    else if (name.trim().length > 100)
+      errors.name = "Name must be at most 100 characters";
     return errors;
   }
 
   const fetchCategoriesData = async () => {
     setLoading(true);
     try {
-      const response = await axiosInstance.get<CategoriesApiResponse>("/public/category");
+      const response = await axiosInstance.get<CategoriesApiResponse>(
+        "/public/category"
+      );
       if (response.data.status === "success" && response.data.data) {
         setCategories(response.data.data.categories || []);
         setTotal(response.data.data.total || 0);
@@ -144,15 +156,19 @@ const AllCategoryPage = () => {
         (category) =>
           category.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           (category.description &&
-            category.description.toLowerCase().includes(searchQuery.toLowerCase()))
+            category.description
+              .toLowerCase()
+              .includes(searchQuery.toLowerCase()))
       );
     }
     if (sortKey) {
       currentCategories.sort((a, b) => {
         const aValue = a[sortKey];
         const bValue = b[sortKey];
-        if (aValue === null || aValue === undefined) return sortDirection === "asc" ? -1 : 1;
-        if (bValue === null || bValue === undefined) return sortDirection === "asc" ? 1 : -1;
+        if (aValue === null || aValue === undefined)
+          return sortDirection === "asc" ? -1 : 1;
+        if (bValue === null || bValue === undefined)
+          return sortDirection === "asc" ? 1 : -1;
         if (typeof aValue === "string" && typeof bValue === "string") {
           return sortDirection === "asc"
             ? aValue.localeCompare(bValue)
@@ -182,6 +198,7 @@ const AllCategoryPage = () => {
     try {
       let imageId: string | undefined;
       if (createImageFile) {
+        // ... (image upload logic is unchanged)
         const formData = new FormData();
         formData.append("image", createImageFile);
         const imageRes = await axiosInstance.post("/admin/image", formData, {
@@ -198,11 +215,27 @@ const AllCategoryPage = () => {
           return;
         }
       }
-      const categoryRes = await axiosInstance.post("/admin/category", {
-        name: createForm.name,
-        description: createForm.description,
-        imageId: imageId || "",
-      });
+
+      // --- SOLUTION ---
+      // 1. Define the payload with a specific type.
+      const payload: { name: string; description?: string; imageId?: string } =
+        {
+          name: createForm.name.trim(),
+        };
+
+      // 2. Only add 'description' if it's not empty.
+      if (createForm.description.trim()) {
+        payload.description = createForm.description.trim();
+      }
+
+      // 3. Add 'imageId' if it exists.
+      if (imageId) {
+        payload.imageId = imageId;
+      }
+      // --- END OF SOLUTION ---
+
+      const categoryRes = await axiosInstance.post("/admin/category", payload);
+
       if (
         categoryRes.data.status === "success" &&
         categoryRes.data.data?.category
@@ -216,6 +249,7 @@ const AllCategoryPage = () => {
         toast.error(categoryRes.data.message || "Failed to create category");
       }
     } catch (err: any) {
+      // ... (error handling is unchanged)
       let apiMessage =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
@@ -244,74 +278,71 @@ const AllCategoryPage = () => {
   };
 
   // Edit: upload image (if new), then use that imageId in PATCH
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setUpdateFormErrors({});
-    const errors = validateCategoryForm(updateForm.name);
-    if (Object.keys(errors).length > 0) {
-      setUpdateFormErrors(errors);
-      return;
-    }
-    setIsUpdating(true);
-    try {
-      let imageId: string | undefined;
-      if (updateForm.imageFile) {
-        const formData = new FormData();
-        formData.append("image", updateForm.imageFile);
-        const imageRes = await axiosInstance.post("/admin/image", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        if (
-          imageRes?.data?.status === "success" &&
-          imageRes?.data?.data?.image?.id
-        ) {
-          imageId = imageRes.data.data.image.id as string;
-        } else {
-          toast.error(imageRes?.data?.message || "Failed to upload image");
-          setIsUpdating(false);
-          return;
-        }
-      }
-      const payload: any = {
-        name: updateForm.name,
-        description: updateForm.description,
-      };
-      if (imageId) payload.imageId = imageId;
-
-      const response = await axiosInstance.patch(
-        `/admin/category/${updateForm.id}`,
-        payload
-      );
-      if (response.data.status === "success") {
-        setCategories(
-          categories.map((cat) =>
-            cat.id === updateForm.id
-              ? { ...cat, name: updateForm.name, description: updateForm.description }
-              : cat
-          )
-        );
-        setIsUpdateDialogOpen(false);
-        toast.success("Category updated successfully");
+const handleUpdate = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setUpdateFormErrors({});
+  const errors = validateCategoryForm(updateForm.name);
+  if (Object.keys(errors).length > 0) {
+    setUpdateFormErrors(errors);
+    return;
+  }
+  setIsUpdating(true);
+  try {
+    let imageId: string | undefined;
+    if (updateForm.imageFile) {
+      // ... (image upload logic is unchanged)
+      const formData = new FormData();
+      formData.append("image", updateForm.imageFile);
+      const imageRes = await axiosInstance.post("/admin/image", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      if (imageRes?.data?.status === "success" && imageRes?.data?.data?.image?.id) {
+        imageId = imageRes.data.data.image.id as string;
       } else {
-        toast.error(response.data.message || "Failed to update category");
+        toast.error(imageRes?.data?.message || "Failed to upload image");
+        setIsUpdating(false);
+        return;
       }
-    } catch (err: any) {
-      let apiMessage =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.message ||
-        "Something went wrong. Please try again.";
-      if (
-        typeof apiMessage === "string" &&
-        apiMessage.toLowerCase().includes("duplicate")
-      ) {
-        apiMessage = "A category with this name already exists.";
-      }
-      toast.error(apiMessage);
-    } finally {
-      setIsUpdating(false);
     }
-  };
+
+    // --- SOLUTION ---
+    const payload: { name: string; description?: string; imageId?: string } = {
+      name: updateForm.name.trim(),
+    };
+
+    if (updateForm.description.trim()) {
+      payload.description = updateForm.description.trim();
+    }
+    
+    if (imageId) {
+      payload.imageId = imageId;
+    }
+    // --- END OF SOLUTION ---
+
+    const response = await axiosInstance.patch(
+      `/admin/category/${updateForm.id}`,
+      payload
+    );
+
+    if (response.data.status === "success") {
+      // It's better to refetch data to guarantee UI consistency
+      fetchCategoriesData(); 
+      setIsUpdateDialogOpen(false);
+      toast.success("Category updated successfully");
+    } else {
+      toast.error(response.data.message || "Failed to update category");
+    }
+  } catch (err: any) {
+    // ... (error handling is unchanged)
+    let apiMessage = err?.response?.data?.message || err?.response?.data?.error || err?.message || "Something went wrong. Please try again.";
+    if (typeof apiMessage === "string" && apiMessage.toLowerCase().includes("duplicate")) {
+      apiMessage = "A category with this name already exists.";
+    }
+    toast.error(apiMessage);
+  } finally {
+    setIsUpdating(false);
+  }
+};
 
   const handleDelete = (id: string) => {
     setCategoryToDeleteId(id);
@@ -322,9 +353,13 @@ const AllCategoryPage = () => {
     if (!categoryToDeleteId) return;
     setIsDeleting(categoryToDeleteId);
     try {
-      const response = await axiosInstance.delete(`/admin/category/${categoryToDeleteId}`);
+      const response = await axiosInstance.delete(
+        `/admin/category/${categoryToDeleteId}`
+      );
       if (response.data.status === "success") {
-        setCategories(categories.filter((cat) => cat.id !== categoryToDeleteId));
+        setCategories(
+          categories.filter((cat) => cat.id !== categoryToDeleteId)
+        );
         setTotal(total - 1);
         toast.success("Category deleted successfully");
       } else {

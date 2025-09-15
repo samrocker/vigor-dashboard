@@ -1,10 +1,8 @@
 "use client"
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import Cookies from "js-cookie";
-import { Skeleton } from "@/components/ui/skeleton"; // Added Skeleton import
-import { motion } from "framer-motion"; // Added motion import
+import { Skeleton } from "@/components/ui/skeleton";
+import { motion } from "framer-motion";
 
 export default function Home() {
   const router = useRouter();

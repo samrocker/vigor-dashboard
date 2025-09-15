@@ -1,6 +1,4 @@
 "use client";
-import Applayout from "@/components/core/Applayout";
-import AppSidebar from "@/components/core/sidebar";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { getAccessToken } from "@/lib/auth";
 import { useRouter } from "next/navigation";

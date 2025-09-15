@@ -68,10 +68,9 @@ const AllSubCategoryPage = () => {
   const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
-  // imageFile is included in both create and update forms
   const [createForm, setCreateForm] = useState<{
     name: string;
-    description: string;
+    description?: string;
     categoryId: string;
     imageFile: File | null;
   }>({
@@ -99,14 +98,23 @@ const AllSubCategoryPage = () => {
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [subCategoryToDeleteId, setSubCategoryToDeleteId] = useState<string | null>(null);
+  const [subCategoryToDeleteId, setSubCategoryToDeleteId] = useState<
+    string | null
+  >(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilterId, setCategoryFilterId] = useState<string | "all">("all");
+  const [categoryFilterId, setCategoryFilterId] = useState<string | "all">(
+    "all"
+  );
   const [sortKey, setSortKey] = useState<keyof SubCategory | null>("createdAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-  const [createFormErrors, setCreateFormErrors] = useState<{ name?: string; categoryId?: string }>({});
-  const [updateFormErrors, setUpdateFormErrors] = useState<{ name?: string }>({});
+  const [createFormErrors, setCreateFormErrors] = useState<{
+    name?: string;
+    categoryId?: string;
+  }>({});
+  const [updateFormErrors, setUpdateFormErrors] = useState<{ name?: string }>(
+    {}
+  );
   const router = useRouter();
 
   useEffect(() => {
@@ -116,7 +124,9 @@ const AllSubCategoryPage = () => {
 
   const fetchCategories = async () => {
     try {
-      const response = await axiosInstance.get<CategoriesApiResponse>("/public/category");
+      const response = await axiosInstance.get<CategoriesApiResponse>(
+        "/public/category"
+      );
       if (response.data.status === "success" && response.data.data) {
         setCategories(response.data.data.categories || []);
       }
@@ -129,7 +139,9 @@ const AllSubCategoryPage = () => {
   const fetchSubCategoriesData = async () => {
     setLoading(true);
     try {
-      const response = await axiosInstance.get<SubCategoriesApiResponse>("/public/sub-category");
+      const response = await axiosInstance.get<SubCategoriesApiResponse>(
+        "/public/sub-category"
+      );
       if (response.data.status === "success" && response.data.data) {
         setAllSubCategories(response.data.data?.subCategories || []);
         setTotal(response.data.data?.total || 0);
@@ -138,7 +150,8 @@ const AllSubCategoryPage = () => {
       }
     } catch (err: any) {
       toast.error(
-        err.message || "An unexpected error occurred while fetching subcategories."
+        err.message ||
+          "An unexpected error occurred while fetching subcategories."
       );
     } finally {
       setLoading(false);
@@ -148,8 +161,10 @@ const AllSubCategoryPage = () => {
   function validateSubCategoryForm(name: string, categoryId?: string) {
     const errors: { name?: string; categoryId?: string } = {};
     if (!name.trim()) errors.name = "Name is required";
-    else if (name.trim().length < 2) errors.name = "Name must be at least 2 characters";
-    else if (name.trim().length > 100) errors.name = "Name must be at most 100 characters";
+    else if (name.trim().length < 2)
+      errors.name = "Name must be at least 2 characters";
+    else if (name.trim().length > 100)
+      errors.name = "Name must be at most 100 characters";
     if (typeof categoryId !== "undefined") {
       if (!categoryId.trim()) errors.categoryId = "Category is required";
     }
@@ -164,7 +179,9 @@ const AllSubCategoryPage = () => {
         (subCategory) =>
           subCategory.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           (subCategory.description &&
-            subCategory.description.toLowerCase().includes(searchQuery.toLowerCase()))
+            subCategory.description
+              .toLowerCase()
+              .includes(searchQuery.toLowerCase()))
       );
     }
     if (categoryFilterId !== "all") {
@@ -176,8 +193,10 @@ const AllSubCategoryPage = () => {
       currentSubCategories = [...currentSubCategories].sort((a, b) => {
         const aValue = a[sortKey];
         const bValue = b[sortKey];
-        if (aValue === null || aValue === undefined) return sortDirection === "asc" ? -1 : 1;
-        if (bValue === null || bValue === undefined) return sortDirection === "asc" ? 1 : -1;
+        if (aValue === null || aValue === undefined)
+          return sortDirection === "asc" ? -1 : 1;
+        if (bValue === null || bValue === undefined)
+          return sortDirection === "asc" ? 1 : -1;
         if (typeof aValue === "string" && typeof bValue === "string") {
           return sortDirection === "asc"
             ? aValue.localeCompare(bValue)
@@ -194,7 +213,6 @@ const AllSubCategoryPage = () => {
     return currentSubCategories;
   }, [allSubCategories, searchQuery, categoryFilterId, sortKey, sortDirection]);
 
-  // Reset state and file on close
   const handleCreateDialogChange = (open: boolean) => {
     setIsCreateDialogOpen(open);
     if (!open) {
@@ -224,11 +242,13 @@ const AllSubCategoryPage = () => {
     }
   };
 
-  // --- CREATE (imageId logic) ---
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateFormErrors({});
-    const errors = validateSubCategoryForm(createForm.name, createForm.categoryId);
+    const errors = validateSubCategoryForm(
+      createForm.name,
+      createForm.categoryId
+    );
     if (Object.keys(errors).length > 0) {
       setCreateFormErrors(errors);
       return;
@@ -236,7 +256,7 @@ const AllSubCategoryPage = () => {
     setIsCreating(true);
 
     try {
-      let imageId = "";
+      let imageId: string | undefined;
       if (createForm.imageFile) {
         const formData = new FormData();
         formData.append("image", createForm.imageFile);
@@ -254,12 +274,30 @@ const AllSubCategoryPage = () => {
           return;
         }
       }
-      const subCategoryResponse = await axiosInstance.post("/admin/sub-category", {
-        name: createForm.name,
-        description: createForm.description,
+
+      const payload: {
+        name: string;
+        categoryId: string;
+        description?: string;
+        imageId?: string;
+      } = {
+        name: createForm.name.trim(),
         categoryId: createForm.categoryId,
-        imageId,
-      });
+      };
+
+      if (createForm.description && createForm.description.trim()) {
+        payload.description = createForm.description.trim();
+      }
+
+      if (imageId) {
+        payload.imageId = imageId;
+      }
+
+      const subCategoryResponse = await axiosInstance.post(
+        "/admin/sub-category",
+        payload
+      );
+
       if (
         subCategoryResponse.data.status === "success" &&
         subCategoryResponse.data.data
@@ -278,8 +316,12 @@ const AllSubCategoryPage = () => {
         err?.response?.data?.error ||
         err?.message ||
         "Something went wrong. Please try again.";
-      if (typeof apiMessage === "string" && apiMessage.toLowerCase().includes("duplicate")) {
-        apiMessage = "A subcategory with this name already exists in this category.";
+      if (
+        typeof apiMessage === "string" &&
+        apiMessage.toLowerCase().includes("duplicate")
+      ) {
+        apiMessage =
+          "A subcategory with this name already exists in this category.";
       }
       toast.error(apiMessage);
     } finally {
@@ -287,7 +329,6 @@ const AllSubCategoryPage = () => {
     }
   };
 
-  // --- EDIT (imageId logic) ---
   const openUpdateDialog = (subCategory: SubCategory) => {
     setUpdateForm({
       id: subCategory.id,
@@ -297,6 +338,7 @@ const AllSubCategoryPage = () => {
     });
     setIsUpdateDialogOpen(true);
   };
+
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setUpdateFormErrors({});
@@ -307,7 +349,7 @@ const AllSubCategoryPage = () => {
     }
     setIsUpdating(true);
     try {
-      let imageId = "";
+      let imageId: string | undefined;
       if (updateForm.imageFile) {
         const formData = new FormData();
         formData.append("image", updateForm.imageFile);
@@ -325,27 +367,31 @@ const AllSubCategoryPage = () => {
           return;
         }
       }
-      const patchBody: any = {
-        name: updateForm.name,
-        description: updateForm.description,
-      };
-      if (imageId) patchBody.imageId = imageId;
 
-      const response = await axiosInstance.patch(`/admin/sub-category/${updateForm.id}`, patchBody);
+      const payload: {
+        name: string;
+        description?: string;
+        imageId?: string;
+      } = {
+        name: updateForm.name.trim(),
+      };
+
+      if (updateForm.description.trim()) {
+        payload.description = updateForm.description.trim();
+      }
+
+      if (imageId) {
+        payload.imageId = imageId;
+      }
+
+      const response = await axiosInstance.patch(
+        `/admin/sub-category/${updateForm.id}`,
+        payload
+      );
       if (response.data.status === "success") {
-        setAllSubCategories(
-          allSubCategories.map((subCat) =>
-            subCat.id === updateForm.id
-              ? {
-                  ...subCat,
-                  name: updateForm.name,
-                  description: updateForm.description,
-                }
-              : subCat
-          )
-        );
-        setIsUpdateDialogOpen(false);
         toast.success("SubCategory updated successfully");
+        handleUpdateDialogChange(false);
+        fetchSubCategoriesData();
       } else {
         toast.error(response.data.message || "Failed to update subcategory");
       }
@@ -355,8 +401,12 @@ const AllSubCategoryPage = () => {
         err?.response?.data?.error ||
         err?.message ||
         "Something went wrong. Please try again.";
-      if (typeof apiMessage === "string" && apiMessage.toLowerCase().includes("duplicate")) {
-        apiMessage = "A subcategory with this name already exists in this category.";
+      if (
+        typeof apiMessage === "string" &&
+        apiMessage.toLowerCase().includes("duplicate")
+      ) {
+        apiMessage =
+          "A subcategory with this name already exists in this category.";
       }
       toast.error(apiMessage);
     } finally {
@@ -378,7 +428,9 @@ const AllSubCategoryPage = () => {
       );
       if (response.data.status === "success") {
         setAllSubCategories(
-          allSubCategories.filter((subCat) => subCat.id !== subCategoryToDeleteId)
+          allSubCategories.filter(
+            (subCat) => subCat.id !== subCategoryToDeleteId
+          )
         );
         setTotal(total - 1);
         toast.success("SubCategory deleted successfully");
@@ -421,7 +473,6 @@ const AllSubCategoryPage = () => {
     router.push(`/subcategory/${subCategoryId}`);
   };
 
-  // --- LOADING SKELETON ---
   if (loading) {
     return (
       <motion.div
@@ -802,8 +853,8 @@ const AllSubCategoryPage = () => {
                     No subcategories found
                   </h3>
                   <span className="text-muted-foreground mb-4">
-                    Adjust your search or filters, or get started by creating your
-                    first subcategory.
+                    Adjust your search or filters, or get started by creating
+                    your first subcategory.
                   </span>
                   <Button
                     onClick={() => setIsCreateDialogOpen(true)}
@@ -885,7 +936,9 @@ const AllSubCategoryPage = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => handleDelete(subcategory.id)}
-                              disabled={isDeleting === subcategory.id || loading}
+                              disabled={
+                                isDeleting === subcategory.id || loading
+                              }
                               className="hover:bg-destructive/10 hover:border-destructive hover:text-destructive border-border"
                             >
                               {isDeleting === subcategory.id ? (
@@ -1011,8 +1064,8 @@ const AllSubCategoryPage = () => {
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-muted-foreground">
-              Are you sure you want to delete this subcategory? This action cannot
-              be undone.
+              Are you sure you want to delete this subcategory? This action
+              cannot be undone.
             </p>
             <DialogFooter>
               <Button

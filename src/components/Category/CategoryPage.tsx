@@ -173,7 +173,9 @@ const CategoryDetailsPage = () => {
 
   // State for changing the category image
   const [isChangeImageDialogOpen, setIsChangeImageDialogOpen] = useState(false);
-  const [changeImageForm, setChangeImageForm] = useState<{ image: File | null }>({
+  const [changeImageForm, setChangeImageForm] = useState<{
+    image: File | null;
+  }>({
     image: null,
   });
   const [isUpdatingImage, setIsUpdatingImage] = useState(false);
@@ -254,23 +256,23 @@ const CategoryDetailsPage = () => {
     setChangeImageForm({ image: null }); // Reset form
     setIsChangeImageDialogOpen(true);
   };
-  
+
   const handleUpdateCategoryImage = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsUpdatingImage(true);
     setError(null);
-  
+
     if (!changeImageForm.image) {
       toast.error("An image file is required.");
       setIsUpdatingImage(false);
       return;
     }
-  
+
     try {
       // --- Step 1: Upload the image to the /admin/image endpoint ---
       const formData = new FormData();
       formData.append("image", changeImageForm.image);
-  
+
       const imageUploadResponse = await axiosInstance.post(
         "/admin/image",
         formData,
@@ -280,14 +282,19 @@ const CategoryDetailsPage = () => {
           },
         }
       );
-  
-      if (imageUploadResponse.data.status !== "success" || !imageUploadResponse.data.data?.image?.id) {
-        throw new Error(imageUploadResponse.data.message || "Failed to upload image.");
+
+      if (
+        imageUploadResponse.data.status !== "success" ||
+        !imageUploadResponse.data.data?.image?.id
+      ) {
+        throw new Error(
+          imageUploadResponse.data.message || "Failed to upload image."
+        );
       }
-  
+
       const newImageId = imageUploadResponse.data.data.image.id;
       toast.info("Image uploaded, now updating category...");
-  
+
       // --- Step 2: Update the category with the new imageId ---
       const categoryUpdateResponse = await axiosInstance.patch(
         `/admin/category/${categoryId}`,
@@ -298,17 +305,22 @@ const CategoryDetailsPage = () => {
           description: category?.description || "",
         }
       );
-  
+
       if (categoryUpdateResponse.data.status === "success") {
         toast.success("Category image updated successfully!");
         setIsChangeImageDialogOpen(false);
         fetchCategoryDetails(categoryId); // Re-fetch all data to show the new image
       } else {
-        throw new Error(categoryUpdateResponse.data.message || "Failed to associate image with category.");
+        throw new Error(
+          categoryUpdateResponse.data.message ||
+            "Failed to associate image with category."
+        );
       }
-  
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.message || "An unexpected error occurred.";
+      const errorMessage =
+        err.response?.data?.message ||
+        err.message ||
+        "An unexpected error occurred.";
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -347,7 +359,6 @@ const CategoryDetailsPage = () => {
   };
 
   // --- Subcategory CRUD Handlers ---
-
   const handleCreateSubCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!createSubCategoryForm.name.trim()) {
@@ -362,11 +373,24 @@ const CategoryDetailsPage = () => {
     setIsCreatingSubCategory(true);
     setError(null);
     try {
-      const response = await axiosInstance.post("/admin/sub-category", {
-        name: createSubCategoryForm.name,
-        description: createSubCategoryForm.description,
+      // --- SOLUTION ---
+      // 1. Define the payload with an optional description.
+      const payload: {
+        name: string;
+        categoryId: string;
+        description?: string;
+      } = {
+        name: createSubCategoryForm.name.trim(),
         categoryId: createSubCategoryForm.categoryId,
-      });
+      };
+
+      // 2. Only add 'description' to the payload if it's not empty.
+      if (createSubCategoryForm.description.trim()) {
+        payload.description = createSubCategoryForm.description.trim();
+      }
+      // --- END OF SOLUTION ---
+
+      const response = await axiosInstance.post("/admin/sub-category", payload);
 
       if (response.data.status === "success" && response.data.data) {
         toast.success("Subcategory created successfully!");
@@ -410,12 +434,19 @@ const CategoryDetailsPage = () => {
     setIsEditingSubCategory(true);
     setError(null);
     try {
+      // --- SOLUTION ---
+      const payload: { name: string; description?: string } = {
+        name: editSubCategoryForm.name.trim(),
+      };
+
+      if (editSubCategoryForm.description.trim()) {
+        payload.description = editSubCategoryForm.description.trim();
+      }
+      // --- END OF SOLUTION ---
+
       const response = await axiosInstance.patch(
         `/admin/sub-category/${editSubCategoryForm.id}`,
-        {
-          name: editSubCategoryForm.name,
-          description: editSubCategoryForm.description,
-        }
+        payload
       );
 
       if (response.data.status === "success") {
@@ -1149,7 +1180,6 @@ const CategoryDetailsPage = () => {
           </form>
         </DialogContent>
       </Dialog>
-
 
       {/* Delete Image Dialog */}
       <Dialog

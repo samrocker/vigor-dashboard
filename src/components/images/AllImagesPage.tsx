@@ -546,18 +546,15 @@ const AllImagesPage: React.FC = () => {
                   or click to select
                 </p>
               </Label>
-              <Input
-                id="file-upload"
-                type="file"
-                accept="image/*"
-                onChange={onFileChange}
-                className="mb-4"
-              />
-              {file && (
-                <p className="text-sm text-muted-foreground mb-4">
-                  Selected: {file.name}
-                </p>
-              )}
+              <div className="mb-4 woverflow-hidden">
+                <Input
+                  id="file-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={onFileChange}
+                  className="w-full text-ellipsis overflow-hidden whitespace-nowrap"
+                />
+              </div>
               <Select
                 value={uploadType}
                 onValueChange={(v) => setUploadType(v as ImageType)}

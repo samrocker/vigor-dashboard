@@ -792,9 +792,9 @@ const AllUserPage = () => {
                     <>
                       Are you sure you want to delete this user? Choose{" "}
                       <strong className="font-semibold text-orange-500">
-                        Soft Delete
+                        Deactive User
                       </strong>{" "}
-                      to mark the user as inactive (reversible) or{" "}
+                      to mark the user as Inactive (reversible) or{" "}
                       <strong className="font-semibold text-destructive">
                         Permanent Delete
                       </strong>{" "}
@@ -804,7 +804,7 @@ const AllUserPage = () => {
                     <>
                       This user is currently inactive. You can{" "}
                       <strong className="font-semibold text-green-600">
-                        Recover
+                        Active User
                       </strong>{" "}
                       the user to reactivate their account or{" "}
                       <strong className="font-semibold text-destructive">

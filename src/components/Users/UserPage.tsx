@@ -676,7 +676,7 @@ const UserPage = () => {
                         >
                           {isSoftDeleting
                             ? "Deleting..."
-                            : "Confirm Soft Delete"}
+                            : "Confirm Deactivating User"}
                         </Button>
                       </DialogFooter>
                     </DialogContent>
