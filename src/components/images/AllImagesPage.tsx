@@ -112,14 +112,14 @@ const AllImagesPage: React.FC = () => {
     }
   }, [router]);
 
-  // Fetch images
-  const fetchImages = useCallback(async () => {
+  // Fetch images by type
+  const fetchImages = useCallback(async (type: ImageType) => {
     setLoading(true);
     try {
-      const { data } = await axiosInstance.get(`/public/image`);
+      const { data } = await axiosInstance.get(`/public/image?search=${type}`);
       setImages(data.data.images);
     } catch (error) {
-      toast.error("Failed to fetch images.");
+      toast.error(`Failed to fetch ${type.toLowerCase()} images.`);
       setImages([]);
     } finally {
       setLoading(false);
@@ -132,23 +132,21 @@ const AllImagesPage: React.FC = () => {
 
   useEffect(() => {
     if (hasAccess) {
-      fetchImages();
+      fetchImages(activeTab);
     }
-  }, [hasAccess, fetchImages]);
+  }, [hasAccess, fetchImages, activeTab]);
 
-  // Filtered images for UI
+  // Filtered images for UI (now only handles search)
   const filteredImages = useMemo(() => {
-    return images
-      .filter((img) => img.type === activeTab)
-      .filter(
-        (img) =>
-          img.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          new Date(img.createdAt)
-            .toLocaleDateString()
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase())
-      );
-  }, [images, activeTab, searchQuery]);
+    return images.filter(
+      (img) =>
+        img.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        new Date(img.createdAt)
+          .toLocaleDateString()
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase())
+    );
+  }, [images, searchQuery]);
 
   // Stats per type + total
   const imageStats = useMemo(() => {
@@ -190,7 +188,8 @@ const AllImagesPage: React.FC = () => {
       });
       setFile(null);
       setShowUploadDialog(false);
-      await fetchImages();
+      setActiveTab(uploadType);
+      await fetchImages(uploadType);
       toast.success("Image uploaded successfully!");
     } catch {
       toast.error("Image upload failed. Please try again.");
@@ -238,7 +237,7 @@ const AllImagesPage: React.FC = () => {
         type: editType,
       });
       setShowEditDialog(false);
-      await fetchImages();
+      await fetchImages(activeTab);
       toast.success("Image type updated successfully!");
     } catch {
       toast.error("Failed to update image type. Please try again.");
@@ -251,7 +250,7 @@ const AllImagesPage: React.FC = () => {
   const handleRefresh = async () => {
     setRefreshing(true);
     setSearchQuery("");
-    await fetchImages();
+    await fetchImages(activeTab);
     setRefreshing(false);
   };
 
@@ -271,7 +270,7 @@ const AllImagesPage: React.FC = () => {
         },
       });
       toast.success("Image deleted successfully.");
-      await fetchImages();
+      await fetchImages(activeTab);
     } catch {
       toast.error("Failed to delete image. Please try again.");
     } finally {
@@ -537,39 +536,41 @@ const AllImagesPage: React.FC = () => {
                 isDragging ? "border-primary bg-primary/10" : "border-border"
               )}
             >
-              <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <Label htmlFor="file-upload" className="cursor-pointer">
-                <p className="text-lg font-medium text-foreground mb-2">
-                  Drag and drop an image here
-                </p>
-                <p className="text-sm text-muted-foreground mb-4">
-                  or click to select
-                </p>
-              </Label>
-              <div className="mb-4 woverflow-hidden">
-                <Input
-                  id="file-upload"
-                  type="file"
-                  accept="image/*"
-                  onChange={onFileChange}
-                  className="w-full text-ellipsis overflow-hidden whitespace-nowrap"
-                />
+              <div className={cn(isDragging && "pointer-events-none")}>
+                <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                <Label htmlFor="file-upload" className="cursor-pointer">
+                  <p className="text-lg font-medium text-foreground mb-2">
+                    Drag and drop an image here
+                  </p>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    or click to select
+                  </p>
+                </Label>
+                <div className="mb-4 woverflow-hidden">
+                  <Input
+                    id="file-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={onFileChange}
+                    className="w-full text-ellipsis overflow-hidden whitespace-nowrap"
+                  />
+                </div>
+                <Select
+                  value={uploadType}
+                  onValueChange={(v) => setUploadType(v as ImageType)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {IMAGE_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t.charAt(0) + t.slice(1).toLowerCase()}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <Select
-                value={uploadType}
-                onValueChange={(v) => setUploadType(v as ImageType)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {IMAGE_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t.charAt(0) + t.slice(1).toLowerCase()}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
             <DialogFooter>
               <Button
