@@ -1,13 +1,5 @@
 import axios, { InternalAxiosRequestConfig, AxiosResponse, AxiosError } from "axios";
-import { getAccessToken, getRefreshToken, setTokens } from "./auth";
-
-// First, add clearTokens to your auth.ts file or create it
-const clearTokens = (): void => {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-  }
-};
+import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "./auth";
 
 export const axiosInstance = axios.create({
   baseURL: `${process.env.NEXT_PUBLIC_API_URL}/v1`,
