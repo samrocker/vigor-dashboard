@@ -8,7 +8,6 @@ import {
   Package,
   DollarSign,
   Boxes,
-  Calendar,
   Filter,
   ArrowUp,
   ArrowDown,
@@ -24,15 +23,10 @@ import {
 } from "lucide-react";
 import { getAccessToken } from "@/lib/auth";
 import { ApiResponse, axiosInstance } from "@/lib/axios";
+import { AxiosError } from "axios";
 
 // Shadcn UI components
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableHeader,
@@ -59,7 +53,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -116,6 +109,7 @@ export interface Product {
   description: string | null;
   additionalDetails?: AdditionalDetails;
   price: number;
+  originalPrice: number;
   COD: boolean;
   stock: number;
   createdAt: string;
@@ -153,6 +147,7 @@ interface FormErrors {
   name?: string;
   description?: string;
   price?: string;
+  originalPrice?: string;
   stock?: string;
   additionalDetails?: string;
   general?: string;
@@ -162,6 +157,7 @@ const initialFormErrors: FormErrors = {
   name: "",
   description: "",
   price: "",
+  originalPrice: "",
   stock: "",
   additionalDetails: "",
   general: "",
@@ -213,6 +209,7 @@ const AllProductPage = () => {
     name: "",
     description: "",
     price: 0,
+    originalPrice: 0,
     stock: 0,
     COD: false,
     subCategoryId: null as string | null,
@@ -229,6 +226,7 @@ const AllProductPage = () => {
     name: "",
     description: "",
     price: 0,
+    originalPrice: 0,
     stock: 0,
     COD: false,
     subCategoryId: null as string | null,
@@ -363,7 +361,6 @@ const AllProductPage = () => {
     currentPage,
   ]);
 
-  // --- Handlers ---
   const handleRefresh = () => {
     fetchAllProducts();
     fetchSubCategoriesForForm();
@@ -497,6 +494,11 @@ const AllProductPage = () => {
       errors.price = "Price must be greater than 0.";
       isValid = false;
     }
+    if (Number(form.originalPrice) < Number(form.price)) {
+      errors.originalPrice =
+        "Original price must be greater than or equal to the selling price.";
+      isValid = false;
+    }
     if (Number(form.stock) < 0 || !Number.isInteger(Number(form.stock))) {
       errors.stock = "Stock must be a non-negative integer.";
       isValid = false;
@@ -526,7 +528,6 @@ const AllProductPage = () => {
     e.preventDefault();
     setCreateFormErrors(initialFormErrors);
 
-    // The correction is on this line: createform -> createForm
     const { errors, isValid } = validateForm(createForm);
     if (!isValid) {
       setCreateFormErrors(errors);
@@ -539,12 +540,11 @@ const AllProductPage = () => {
     try {
       let imageIds: string[] = [];
 
-      // Step 1: Upload images if any are selected
       if (createFormImages.length > 0) {
         toast.info("Uploading product images...");
         const formData = new FormData();
         createFormImages.forEach((imageFile) => {
-          formData.append("images", imageFile); // Note: API expects 'images' key
+          formData.append("images", imageFile);
         });
 
         try {
@@ -575,11 +575,10 @@ const AllProductPage = () => {
             }`
           );
           setIsCreating(false);
-          return; // Stop the process if image upload fails
+          return;
         }
       }
 
-      // Step 2: Create the product with image IDs
       const additionalDetailsObject: AdditionalDetails = {};
       createForm.additionalDetails.forEach((detail) => {
         if (detail.key.trim() && detail.value.trim()) {
@@ -591,6 +590,7 @@ const AllProductPage = () => {
         name: createForm.name.trim(),
         description: createForm.description.trim(),
         price: Number(createForm.price),
+        originalPrice: Number(createForm.originalPrice),
         stock: Number(createForm.stock),
         COD: Boolean(createForm.COD),
         additionalDetails: additionalDetailsObject,
@@ -652,6 +652,7 @@ const AllProductPage = () => {
       name: product.name,
       description: product.description || "",
       price: product.price,
+      originalPrice: product.originalPrice || product.price,
       stock: product.stock,
       COD: product.COD,
       subCategoryId: product.subCategoryId,
@@ -685,6 +686,7 @@ const AllProductPage = () => {
       const payload: { [key: string]: any } = {
         name: updateForm.name.trim(),
         price: Number(updateForm.price),
+        originalPrice: Number(updateForm.originalPrice),
         stock: Number(updateForm.stock),
         COD: Boolean(updateForm.COD),
         description: updateForm.description.trim() || null,
@@ -760,7 +762,6 @@ const AllProductPage = () => {
     }
   };
 
-  // --- Render ---
   return (
     <div className="min-h-screen bg-background">
       {/* Header Section */}
@@ -1039,6 +1040,12 @@ const AllProductPage = () => {
                       </TableHead>
                       <TableHead
                         className="cursor-pointer hover:text-foreground"
+                        onClick={() => handleSort("originalPrice")}
+                      >
+                        Orignal Price {renderSortIcon("price")}
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer hover:text-foreground"
                         onClick={() => handleSort("stock")}
                       >
                         Stock {renderSortIcon("stock")}
@@ -1067,6 +1074,9 @@ const AllProductPage = () => {
                         </TableCell>
                         <TableCell className="text-foreground">
                           {formatCurrency(product.price)}
+                        </TableCell>
+                        <TableCell className="text-foreground">
+                          {formatCurrency(product.originalPrice)}
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -1188,6 +1198,7 @@ const AllProductPage = () => {
               name: "",
               description: "",
               price: 0,
+              originalPrice: 0,
               stock: 0,
               COD: false,
               subCategoryId: null,
@@ -1254,6 +1265,35 @@ const AllProductPage = () => {
                 {createFormErrors.price && (
                   <p className="text-sm text-destructive mt-1">
                     {createFormErrors.price}
+                  </p>
+                )}
+              </div>
+              {/* Original Price */}
+              <div>
+                <label
+                  htmlFor="createOriginalPrice"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Original Price <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  id="createOriginalPrice"
+                  type="number"
+                  value={createForm.originalPrice}
+                  onChange={(e) =>
+                    setCreateForm({
+                      ...createForm,
+                      originalPrice: e.target.valueAsNumber || 0,
+                    })
+                  }
+                  placeholder="e.g., 3999.99"
+                  disabled={isCreating}
+                  min="0"
+                  step="0.01"
+                />
+                {createFormErrors.originalPrice && (
+                  <p className="text-sm text-destructive mt-1">
+                    {createFormErrors.originalPrice}
                   </p>
                 )}
               </div>
@@ -1539,6 +1579,7 @@ const AllProductPage = () => {
               name: "",
               description: "",
               price: 0,
+              originalPrice: 0,
               stock: 0,
               COD: false,
               subCategoryId: null,
@@ -1602,6 +1643,34 @@ const AllProductPage = () => {
                 {updateFormErrors.price && (
                   <p className="text-sm text-destructive mt-1">
                     {updateFormErrors.price}
+                  </p>
+                )}
+              </div>
+              {/* Original Price */}
+              <div>
+                <label
+                  htmlFor="updateOriginalPrice"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Original Price <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  id="updateOriginalPrice"
+                  type="number"
+                  value={updateForm.originalPrice}
+                  onChange={(e) =>
+                    setUpdateForm({
+                      ...updateForm,
+                      originalPrice: e.target.valueAsNumber || 0,
+                    })
+                  }
+                  disabled={isUpdating}
+                  min="0"
+                  step="0.01"
+                />
+                {updateFormErrors.originalPrice && (
+                  <p className="text-sm text-destructive mt-1">
+                    {updateFormErrors.originalPrice}
                   </p>
                 )}
               </div>

@@ -6,9 +6,7 @@ import {
   Search,
   RefreshCw,
   Package,
-  DollarSign,
   Boxes,
-  Calendar,
   Filter,
   ArrowUp,
   ArrowDown,
@@ -19,19 +17,15 @@ import {
   Trash2,
   Type,
   X,
+  XCircle,
+  CheckCircle,
 } from "lucide-react";
 import { getAccessToken } from "@/lib/auth";
 import { ApiResponse, axiosInstance } from "@/lib/axios";
-import { AxiosError } from "axios"; // Import AxiosError for type checking
+import { AxiosError } from "axios";
 
 // Shadcn UI components
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableHeader,
@@ -73,13 +67,6 @@ interface KeyValuePair {
 interface ProductForVariant {
   id: string;
   name: string;
-  description: string | null;
-  price: number;
-  stock: number;
-  COD: boolean;
-  createdAt: string;
-  updatedAt: string;
-  subCategoryId: string | null;
 }
 
 export interface Variant {
@@ -88,11 +75,10 @@ export interface Variant {
   name: string;
   value: { [key: string]: string };
   price: number;
+  originalPrice?: number;
   stock: number;
   createdAt: string;
   updatedAt: string;
-  cartItems?: any[];
-  orderItems?: any[];
   product?: ProductForVariant;
 }
 
@@ -113,11 +99,11 @@ interface ProductOption {
   name: string;
 }
 
-// NEW: Form Error Types
 type FormErrors = {
   productId?: string;
   name?: string;
   price?: string;
+  originalPrice?: string;
   stock?: string;
   value?: string;
 };
@@ -143,7 +129,6 @@ function formatDate(dateString: string | null) {
   });
 }
 
-// NEW: Centralized API Error Handler
 const handleApiError = (
   error: any,
   context: "fetching" | "creating" | "updating" | "deleting"
@@ -191,27 +176,24 @@ const AllVariantsPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalVariantsCount, setTotalVariantsCount] = useState(0);
-
-  // Filter states
   const [searchQuery, setSearchQuery] = useState("");
   const [productFilterId, setProductFilterId] = useState<string | "all">("all");
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
-
-  // Sorting states
   const [sortKey, setSortKey] = useState<keyof Variant | null>("createdAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
-  // CRUD operation states
+  // Dialog and Form States
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
     productId: "",
     name: "",
     value: [] as KeyValuePair[],
     price: 0,
+    originalPrice: 0,
     stock: 0,
   });
   const [isCreating, setIsCreating] = useState(false);
-  const [createFormErrors, setCreateFormErrors] = useState<FormErrors>({}); // NEW
+  const [createFormErrors, setCreateFormErrors] = useState<FormErrors>({});
 
   const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
   const [updateForm, setUpdateForm] = useState({
@@ -219,10 +201,11 @@ const AllVariantsPage = () => {
     name: "",
     value: [] as KeyValuePair[],
     price: 0,
+    originalPrice: 0,
     stock: 0,
   });
   const [isUpdating, setIsUpdating] = useState(false);
-  const [updateFormErrors, setUpdateFormErrors] = useState<FormErrors>({}); // NEW
+  const [updateFormErrors, setUpdateFormErrors] = useState<FormErrors>({});
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [variantToDeleteId, setVariantToDeleteId] = useState<string | null>(
@@ -244,7 +227,7 @@ const AllVariantsPage = () => {
       setTotalVariantsCount(data?.total || 0);
     } catch (err: any) {
       setAllVariants([]);
-      handleApiError(err, "fetching"); // UPDATED
+      handleApiError(err, "fetching");
     } finally {
       setLoading(false);
     }
@@ -259,8 +242,8 @@ const AllVariantsPage = () => {
         setProductOptions(response.data.data.products || []);
       }
     } catch (err) {
-      console.error("Failed to fetch product options for form:", err);
-      toast.error("Failed to load product options for variant forms.");
+      console.error("Failed to fetch product options:", err);
+      toast.error("Failed to load product options for forms.");
     }
   }, []);
 
@@ -349,12 +332,10 @@ const AllVariantsPage = () => {
   };
 
   const handleSort = (key: keyof Variant) => {
-    if (sortKey === key) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-    } else {
-      setSortKey(key);
-      setSortDirection("asc");
-    }
+    setSortKey((prevKey) => (prevKey === key ? prevKey : key));
+    setSortDirection((prevDir) =>
+      sortKey === key ? (prevDir === "asc" ? "desc" : "asc") : "asc"
+    );
   };
 
   const renderSortIcon = (key: keyof Variant) => {
@@ -372,28 +353,21 @@ const AllVariantsPage = () => {
 
   const handleAddValueField = (formType: "create" | "update") => {
     const newField = { id: crypto.randomUUID(), key: "", value: "" };
-    if (formType === "create") {
-      setCreateForm((prev) => ({ ...prev, value: [...prev.value, newField] }));
-    } else {
-      setUpdateForm((prev) => ({ ...prev, value: [...prev.value, newField] }));
-    }
+    const setter = formType === "create" ? setCreateForm : setUpdateForm;
+    setter((prev: any) => ({ ...prev, value: [...prev.value, newField] }));
   };
 
   const handleRemoveValueField = (
     formType: "create" | "update",
     idToRemove: string
   ) => {
-    if (formType === "create") {
-      setCreateForm((prev) => ({
-        ...prev,
-        value: prev.value.filter((detail) => detail.id !== idToRemove),
-      }));
-    } else {
-      setUpdateForm((prev) => ({
-        ...prev,
-        value: prev.value.filter((detail) => detail.id !== idToRemove),
-      }));
-    }
+    const setter = formType === "create" ? setCreateForm : setUpdateForm;
+    setter((prev: any) => ({
+      ...prev,
+      value: prev.value.filter(
+        (detail: KeyValuePair) => detail.id !== idToRemove
+      ),
+    }));
   };
 
   const handleValueChange = (
@@ -411,7 +385,6 @@ const AllVariantsPage = () => {
     }));
   };
 
-  // NEW: Form Validation Function
   const validateVariantForm = (
     form: typeof createForm | typeof updateForm,
     isUpdate = false
@@ -424,8 +397,15 @@ const AllVariantsPage = () => {
     if (!form.name.trim()) {
       errors.name = "Variant name is required.";
     }
-    if (form.price < 0) {
-      errors.price = "Price cannot be negative.";
+    if (form.price <= 0) {
+      errors.price = "Price must be a positive number.";
+    }
+    if (
+      (form as typeof createForm).originalPrice < form.price ||
+      (form as typeof updateForm).originalPrice < form.price
+    ) {
+      errors.originalPrice =
+        "Original price must be greater than or equal to the selling price.";
     }
     if (form.stock < 0 || !Number.isInteger(form.stock)) {
       errors.stock = "Stock must be a non-negative integer.";
@@ -435,25 +415,25 @@ const AllVariantsPage = () => {
       (d) => d.key.trim() && d.value.trim()
     );
     if (!hasAtLeastOneDetail) {
-      errors.value =
-        "At least one complete key-value pair is required (e.g., color: red).";
-    }
-    for (const detail of form.value) {
-      if (
-        (detail.key.trim() && !detail.value.trim()) ||
-        (!detail.key.trim() && detail.value.trim())
-      ) {
-        errors.value = "All fields must have both a key and a value.";
-        break;
+      errors.value = "At least one complete key-value pair is required.";
+    } else {
+      for (const detail of form.value) {
+        if (
+          (detail.key.trim() && !detail.value.trim()) ||
+          (!detail.key.trim() && detail.value.trim())
+        ) {
+          errors.value = "All fields must have both a key and a value.";
+          break;
+        }
       }
     }
+
     return errors;
   };
 
   const handleCreateVariant = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateFormErrors({});
-
     const validationErrors = validateVariantForm(createForm);
     if (Object.keys(validationErrors).length > 0) {
       setCreateFormErrors(validationErrors);
@@ -473,6 +453,7 @@ const AllVariantsPage = () => {
         productId: createForm.productId,
         name: createForm.name.trim(),
         price: Number(createForm.price),
+        originalPrice: Number(createForm.originalPrice),
         stock: Number(createForm.stock),
         value: valueObject,
       };
@@ -481,17 +462,10 @@ const AllVariantsPage = () => {
       if (response.data.status === "success") {
         toast.success("Variant created successfully!");
         setIsCreateDialogOpen(false);
-        setCreateForm({
-          productId: "",
-          name: "",
-          value: [],
-          price: 0,
-          stock: 0,
-        });
         fetchAllVariants();
       }
     } catch (err: any) {
-      handleApiError(err, "creating"); // UPDATED
+      handleApiError(err, "creating");
     } finally {
       setIsCreating(false);
     }
@@ -501,7 +475,7 @@ const AllVariantsPage = () => {
     const valueArray: KeyValuePair[] = variant.value
       ? Object.entries(variant.value).map(([key, val]) => ({
           id: crypto.randomUUID(),
-          key: key,
+          key,
           value: String(val),
         }))
       : [];
@@ -511,16 +485,16 @@ const AllVariantsPage = () => {
       name: variant.name,
       value: valueArray,
       price: variant.price,
+      originalPrice: variant.originalPrice || variant.price,
       stock: variant.stock,
     });
-    setUpdateFormErrors({}); // Clear errors on open
+    setUpdateFormErrors({});
     setIsUpdateDialogOpen(true);
   };
 
   const handleUpdateVariant = async (e: React.FormEvent) => {
     e.preventDefault();
     setUpdateFormErrors({});
-
     const validationErrors = validateVariantForm(updateForm, true);
     if (Object.keys(validationErrors).length > 0) {
       setUpdateFormErrors(validationErrors);
@@ -540,6 +514,7 @@ const AllVariantsPage = () => {
       const payload = {
         name: updateForm.name.trim(),
         price: Number(updateForm.price),
+        originalPrice: Number(updateForm.originalPrice),
         stock: Number(updateForm.stock),
         value: valueObject,
       };
@@ -554,7 +529,7 @@ const AllVariantsPage = () => {
         fetchAllVariants();
       }
     } catch (err: any) {
-      handleApiError(err, "updating"); // UPDATED
+      handleApiError(err, "updating");
     } finally {
       setIsUpdating(false);
     }
@@ -575,11 +550,10 @@ const AllVariantsPage = () => {
       if (response.data.status === "success") {
         toast.success("Variant deleted successfully!");
         setIsDeleteDialogOpen(false);
-        setVariantToDeleteId(null);
         fetchAllVariants();
       }
     } catch (err: any) {
-      handleApiError(err, "deleting"); // UPDATED
+      handleApiError(err, "deleting");
     } finally {
       setIsDeleting(false);
     }
@@ -671,7 +645,7 @@ const AllVariantsPage = () => {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Unique Products with Variants
+                    Unique Products
                   </CardTitle>
                   <Package className="h-4 w-4 text-green-600" />
                 </CardHeader>
@@ -731,12 +705,11 @@ const AllVariantsPage = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Products</SelectItem>
-                      {productOptions.length > 0 &&
-                        productOptions.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name}
-                          </SelectItem>
-                        ))}
+                      {productOptions.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -749,7 +722,7 @@ const AllVariantsPage = () => {
                 >
                   <RefreshCw
                     className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
-                  />{" "}
+                  />
                   Refresh
                 </Button>
               </div>
@@ -829,6 +802,12 @@ const AllVariantsPage = () => {
                       </TableHead>
                       <TableHead
                         className="cursor-pointer hover:text-foreground"
+                        onClick={() => handleSort("originalPrice")}
+                      >
+                        Original Price {renderSortIcon("originalPrice")}
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer hover:text-foreground"
                         onClick={() => handleSort("stock")}
                       >
                         Stock {renderSortIcon("stock")}
@@ -854,12 +833,13 @@ const AllVariantsPage = () => {
                         <TableCell className="text-foreground">
                           {formatCurrency(variant.price)}
                         </TableCell>
+                        <TableCell className="text-foreground">
+                          {formatCurrency(variant.originalPrice || 0)}
+                        </TableCell>
                         <TableCell>
                           <Badge
-                            className={
-                              variant.stock === 0
-                                ? "bg-red-100 text-red-800"
-                                : "bg-blue-100 text-blue-800"
+                            variant={
+                              variant.stock === 0 ? "destructive" : "secondary"
                             }
                           >
                             {variant.stock}
@@ -900,7 +880,7 @@ const AllVariantsPage = () => {
                               {isDeleting &&
                               variantToDeleteId === variant.id ? (
                                 <>
-                                  <LoadingSpinner className="h-4 w-4 mr-1 text-destructive" />{" "}
+                                  <LoadingSpinner className="h-4 w-4 mr-1 text-destructive" />
                                   Deleting...
                                 </>
                               ) : (
@@ -951,24 +931,8 @@ const AllVariantsPage = () => {
         )}
       </div>
 
-      {/* Create Variant Dialog */}
-      <Dialog
-        open={isCreateDialogOpen}
-        onOpenChange={(open) => {
-          setIsCreateDialogOpen(open);
-          if (!open) {
-            setIsCreating(false);
-            setCreateFormErrors({});
-            setCreateForm({
-              productId: "",
-              name: "",
-              value: [],
-              price: 0,
-              stock: 0,
-            });
-          }
-        }}
-      >
+      {/* Dialogs */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Create New Variant</DialogTitle>
@@ -987,9 +951,7 @@ const AllVariantsPage = () => {
                   onValueChange={(v) =>
                     setCreateForm({ ...createForm, productId: v })
                   }
-                  disabled={
-                    isCreating || productOptions.length === 0 || loading
-                  }
+                  disabled={isCreating || productOptions.length === 0}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a product" />
@@ -1008,7 +970,7 @@ const AllVariantsPage = () => {
                   </p>
                 )}
               </div>
-              <div>
+              <div className="md:col-span-2">
                 <label
                   htmlFor="createName"
                   className="block text-sm font-medium text-foreground mb-1"
@@ -1017,12 +979,10 @@ const AllVariantsPage = () => {
                 </label>
                 <Input
                   id="createName"
-                  type="text"
                   value={createForm.name}
                   onChange={(e) =>
                     setCreateForm({ ...createForm, name: e.target.value })
                   }
-                  placeholder="e.g., Black Small"
                   disabled={isCreating}
                 />
                 {createFormErrors.name && (
@@ -1048,13 +1008,36 @@ const AllVariantsPage = () => {
                       price: Number(e.target.value),
                     })
                   }
-                  placeholder="Enter price"
                   disabled={isCreating}
-                  min="0"
                 />
                 {createFormErrors.price && (
                   <p className="text-sm text-destructive mt-1">
                     {createFormErrors.price}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label
+                  htmlFor="createOriginalPrice"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Original Price <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  id="createOriginalPrice"
+                  type="number"
+                  value={createForm.originalPrice}
+                  onChange={(e) =>
+                    setCreateForm({
+                      ...createForm,
+                      originalPrice: Number(e.target.value),
+                    })
+                  }
+                  disabled={isCreating}
+                />
+                {createFormErrors.originalPrice && (
+                  <p className="text-sm text-destructive mt-1">
+                    {createFormErrors.originalPrice}
                   </p>
                 )}
               </div>
@@ -1075,9 +1058,7 @@ const AllVariantsPage = () => {
                       stock: Number(e.target.value),
                     })
                   }
-                  placeholder="Enter stock quantity"
                   disabled={isCreating}
-                  min="0"
                 />
                 {createFormErrors.stock && (
                   <p className="text-sm text-destructive mt-1">
@@ -1094,7 +1075,7 @@ const AllVariantsPage = () => {
                     <div key={detail.id} className="flex items-center gap-2">
                       <Input
                         type="text"
-                        placeholder="Key (e.g., Color)"
+                        placeholder="Key"
                         value={detail.key}
                         onChange={(e) =>
                           handleValueChange(
@@ -1105,11 +1086,10 @@ const AllVariantsPage = () => {
                           )
                         }
                         disabled={isCreating}
-                        className="w-1/2"
                       />
                       <Input
                         type="text"
-                        placeholder="Value (e.g., Red)"
+                        placeholder="Value"
                         value={detail.value}
                         onChange={(e) =>
                           handleValueChange(
@@ -1120,7 +1100,6 @@ const AllVariantsPage = () => {
                           )
                         }
                         disabled={isCreating}
-                        className="w-1/2"
                       />
                       <Button
                         type="button"
@@ -1130,14 +1109,13 @@ const AllVariantsPage = () => {
                           handleRemoveValueField("create", detail.id)
                         }
                         disabled={isCreating}
-                        className="text-destructive hover:bg-destructive/10 h-9 w-9"
                       >
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
                   ))}
                   {createFormErrors.value && (
-                    <p className="text-sm text-destructive mt-1">
+                    <p className="text-sm text-destructive">
                       {createFormErrors.value}
                     </p>
                   )}
@@ -1146,9 +1124,9 @@ const AllVariantsPage = () => {
                     variant="outline"
                     onClick={() => handleAddValueField("create")}
                     disabled={isCreating}
-                    className="w-full flex items-center gap-2 mt-2"
+                    className="w-full"
                   >
-                    <Plus className="h-4 w-4" /> Add Value Field
+                    <Plus className="h-4 w-4 mr-2" /> Add Value
                   </Button>
                 </div>
               </div>
@@ -1176,25 +1154,14 @@ const AllVariantsPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Update Variant Dialog */}
-      <Dialog
-        open={isUpdateDialogOpen}
-        onOpenChange={(open) => {
-          setIsUpdateDialogOpen(open);
-          if (!open) {
-            setIsUpdating(false);
-            setUpdateFormErrors({});
-            setUpdateForm({ id: "", name: "", value: [], price: 0, stock: 0 });
-          }
-        }}
-      >
+      <Dialog open={isUpdateDialogOpen} onOpenChange={setIsUpdateDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Variant</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleUpdateVariant} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
+              <div className="md:col-span-2">
                 <label
                   htmlFor="updateName"
                   className="block text-sm font-medium text-foreground mb-1"
@@ -1203,7 +1170,6 @@ const AllVariantsPage = () => {
                 </label>
                 <Input
                   id="updateName"
-                  type="text"
                   value={updateForm.name}
                   onChange={(e) =>
                     setUpdateForm({ ...updateForm, name: e.target.value })
@@ -1234,11 +1200,35 @@ const AllVariantsPage = () => {
                     })
                   }
                   disabled={isUpdating}
-                  min="0"
                 />
                 {updateFormErrors.price && (
                   <p className="text-sm text-destructive mt-1">
                     {updateFormErrors.price}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label
+                  htmlFor="updateOriginalPrice"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Original Price <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  id="updateOriginalPrice"
+                  type="number"
+                  value={updateForm.originalPrice}
+                  onChange={(e) =>
+                    setUpdateForm({
+                      ...updateForm,
+                      originalPrice: Number(e.target.value),
+                    })
+                  }
+                  disabled={isUpdating}
+                />
+                {updateFormErrors.originalPrice && (
+                  <p className="text-sm text-destructive mt-1">
+                    {updateFormErrors.originalPrice}
                   </p>
                 )}
               </div>
@@ -1260,7 +1250,6 @@ const AllVariantsPage = () => {
                     })
                   }
                   disabled={isUpdating}
-                  min="0"
                 />
                 {updateFormErrors.stock && (
                   <p className="text-sm text-destructive mt-1">
@@ -1277,7 +1266,7 @@ const AllVariantsPage = () => {
                     <div key={detail.id} className="flex items-center gap-2">
                       <Input
                         type="text"
-                        placeholder="Key (e.g., Color)"
+                        placeholder="Key"
                         value={detail.key}
                         onChange={(e) =>
                           handleValueChange(
@@ -1288,11 +1277,10 @@ const AllVariantsPage = () => {
                           )
                         }
                         disabled={isUpdating}
-                        className="w-1/2"
                       />
                       <Input
                         type="text"
-                        placeholder="Value (e.g., Red)"
+                        placeholder="Value"
                         value={detail.value}
                         onChange={(e) =>
                           handleValueChange(
@@ -1303,7 +1291,6 @@ const AllVariantsPage = () => {
                           )
                         }
                         disabled={isUpdating}
-                        className="w-1/2"
                       />
                       <Button
                         type="button"
@@ -1313,14 +1300,13 @@ const AllVariantsPage = () => {
                           handleRemoveValueField("update", detail.id)
                         }
                         disabled={isUpdating}
-                        className="text-destructive hover:bg-destructive/10 h-9 w-9"
                       >
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
                   ))}
                   {updateFormErrors.value && (
-                    <p className="text-sm text-destructive mt-1">
+                    <p className="text-sm text-destructive">
                       {updateFormErrors.value}
                     </p>
                   )}
@@ -1329,9 +1315,9 @@ const AllVariantsPage = () => {
                     variant="outline"
                     onClick={() => handleAddValueField("update")}
                     disabled={isUpdating}
-                    className="w-full flex items-center gap-2 mt-2"
+                    className="w-full"
                   >
-                    <Plus className="h-4 w-4" /> Add Value Field
+                    <Plus className="h-4 w-4 mr-2" /> Add Value
                   </Button>
                 </div>
               </div>
@@ -1359,22 +1345,15 @@ const AllVariantsPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Variant Dialog */}
-      <Dialog
-        open={isDeleteDialogOpen}
-        onOpenChange={(open) => {
-          setIsDeleteDialogOpen(open);
-          if (!open) setIsDeleting(false);
-        }}
-      >
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Confirm Deletion</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-muted-foreground">
-              Are you sure you want to delete this variant? This action cannot
-              be undone.
+              Are you sure you want to delete this variant? This cannot be
+              undone.
             </p>
             <DialogFooter>
               <Button

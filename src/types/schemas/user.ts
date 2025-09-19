@@ -1,3 +1,5 @@
+// types/schemas/user.ts
+
 export interface User {
   id: string;
   role: "SUPER" | "ADMIN" | "USER";

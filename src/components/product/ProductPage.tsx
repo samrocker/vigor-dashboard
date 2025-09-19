@@ -40,6 +40,7 @@ import {
   Trash2,
   UploadCloud,
   X,
+  Edit,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -52,6 +53,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // --- Type Definitions ---
 
@@ -124,6 +133,7 @@ export interface ProductDetails {
   description: string | null;
   additionalDetails?: AdditionalDetails;
   price: number;
+  originalPrice: number;
   COD: boolean;
   stock: number;
   createdAt: string;
@@ -148,12 +158,26 @@ interface KeyValuePair {
   value: string;
 }
 
-type FormErrors = {
+type EditFormErrors = {
+  name?: string;
+  description?: string;
+  price?: string;
+  originalPrice?: string;
+  stock?: string;
+  additionalDetails?: string;
+};
+
+type VariantFormErrors = {
   name?: string;
   price?: string;
   stock?: string;
   value?: string;
 };
+
+interface SubCategoryOption {
+  id: string;
+  name: string;
+}
 
 // --- API Response Type Definitions ---
 
@@ -222,6 +246,24 @@ const ProductDetailsPage = () => {
   const [loadingRelatedItems, setLoadingRelatedItems] =
     useState<boolean>(false);
 
+  // Product Edit States
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [subCategoriesOptions, setSubCategoriesOptions] = useState<
+    SubCategoryOption[]
+  >([]);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    description: "",
+    price: 0,
+    originalPrice: 0,
+    stock: 0,
+    COD: false,
+    subCategoryId: null as string | null,
+    additionalDetails: [] as KeyValuePair[],
+  });
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [editFormErrors, setEditFormErrors] = useState<EditFormErrors>({});
+
   // Image Management States
   const [isUploadImageDialogOpen, setIsUploadImageDialogOpen] = useState(false);
   const [uploadImages, setUploadImages] = useState<File[]>([]);
@@ -240,9 +282,8 @@ const ProductDetailsPage = () => {
     value: [] as KeyValuePair[],
   });
   const [isCreatingVariant, setIsCreatingVariant] = useState(false);
-  const [createVariantErrors, setCreateVariantErrors] = useState<FormErrors>(
-    {}
-  );
+  const [createVariantErrors, setCreateVariantErrors] =
+    useState<VariantFormErrors>({});
 
   // --- Data Fetching ---
 
@@ -297,12 +338,27 @@ const ProductDetailsPage = () => {
     }
   }, []);
 
+  const fetchSubCategoriesForForm = useCallback(async () => {
+    try {
+      const response = await axiosInstance.get<
+        ApiResponse<{ subCategories: { id: string; name: string }[] }>
+      >("/public/sub-category");
+      if (response.data.status === "success" && response.data.data) {
+        setSubCategoriesOptions(response.data.data.subCategories || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch subcategories for form:", err);
+      toast.error("Failed to load subcategories for the edit form.");
+    }
+  }, []);
+
   useEffect(() => {
     if (productId) {
       fetchProductDetails(productId);
       fetchProductImages(productId);
+      fetchSubCategoriesForForm();
     }
-  }, [productId, fetchProductDetails, fetchProductImages]);
+  }, [productId, fetchProductDetails, fetchProductImages, fetchSubCategoriesForForm]);
 
   useEffect(() => {
     const fetchRelatedItemDetails = async () => {
@@ -370,6 +426,136 @@ const ProductDetailsPage = () => {
   const handleViewImageDetails = (imageId: string) =>
     router.push(`/image/${imageId}`);
 
+  // --- Product Edit Handlers ---
+  const openEditDialog = () => {
+    if (!product) return;
+    const additionalDetailsArray: KeyValuePair[] = product.additionalDetails
+      ? Object.entries(product.additionalDetails).map(([key, value]) => ({
+          id: crypto.randomUUID(),
+          key: key,
+          value: String(value),
+        }))
+      : [];
+
+    setEditForm({
+      name: product.name,
+      description: product.description || "",
+      price: product.price,
+      originalPrice: product.originalPrice || 0,
+      stock: product.stock,
+      COD: product.COD,
+      subCategoryId: product.subCategoryId,
+      additionalDetails: additionalDetailsArray,
+    });
+    setEditFormErrors({});
+    setIsEditDialogOpen(true);
+  };
+
+  const handleAdditionalDetailChange = (
+    formType: "edit",
+    id: string,
+    field: "key" | "value",
+    newValue: string
+  ) => {
+    setEditForm((prev) => ({
+      ...prev,
+      additionalDetails: prev.additionalDetails.map((detail) =>
+        detail.id === id ? { ...detail, [field]: newValue } : detail
+      ),
+    }));
+  };
+
+  const handleAddAdditionalDetailField = (formType: "edit") => {
+    const newField = { id: crypto.randomUUID(), key: "", value: "" };
+    setEditForm((prev) => ({
+      ...prev,
+      additionalDetails: [...prev.additionalDetails, newField],
+    }));
+  };
+
+  const handleRemoveAdditionalDetailField = (
+    formType: "edit",
+    idToRemove: string
+  ) => {
+    setEditForm((prev) => ({
+      ...prev,
+      additionalDetails: prev.additionalDetails.filter(
+        (detail) => detail.id !== idToRemove
+      ),
+    }));
+  };
+
+  const validateEditForm = () => {
+    const errors: EditFormErrors = {};
+    if (!editForm.name.trim()) errors.name = "Product Name is required.";
+    if (!editForm.description.trim())
+      errors.description = "Description is required.";
+    if (Number(editForm.price) <= 0)
+      errors.price = "Price must be greater than 0.";
+    if (Number(editForm.originalPrice) < Number(editForm.price))
+        errors.originalPrice = "Original price must be greater than or equal to the selling price.";
+    if (Number(editForm.stock) < 0 || !Number.isInteger(Number(editForm.stock)))
+      errors.stock = "Stock must be a non-negative integer.";
+
+    const filledDetails = editForm.additionalDetails.filter(
+      (d) => d.key.trim() && d.value.trim()
+    );
+    if (filledDetails.length !== editForm.additionalDetails.length) {
+      errors.additionalDetails =
+        "All detail fields must have both a key and a value.";
+    } else if (filledDetails.length === 0) {
+      errors.additionalDetails = "At least one additional detail is required.";
+    }
+    return errors;
+  };
+
+  const handleUpdateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const errors = validateEditForm();
+    if (Object.keys(errors).length > 0) {
+      setEditFormErrors(errors);
+      toast.error("Please correct the errors in the form.");
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      const additionalDetailsObject = editForm.additionalDetails.reduce(
+        (acc, { key, value }) => {
+          if (key.trim() && value.trim()) {
+            acc[key.trim()] = value.trim();
+          }
+          return acc;
+        },
+        {} as AdditionalDetails
+      );
+
+      const payload = {
+        name: editForm.name.trim(),
+        description: editForm.description.trim(),
+        price: Number(editForm.price),
+        originalPrice: Number(editForm.originalPrice),
+        stock: Number(editForm.stock),
+        COD: editForm.COD,
+        subCategoryId:
+          editForm.subCategoryId === "none" ? null : editForm.subCategoryId,
+        additionalDetails: additionalDetailsObject,
+        imageIds: productImages.map((img) => img.id),
+      };
+
+      await axiosInstance.patch(`/admin/product/${productId}`, payload);
+      toast.success("Product updated successfully!");
+      setIsEditDialogOpen(false);
+      fetchProductDetails(productId); // Refresh data
+    } catch (err: any) {
+      toast.error(
+        err.response?.data?.message || "Failed to update the product."
+      );
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   // --- Image Management Handlers ---
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -429,6 +615,7 @@ const ProductDetailsPage = () => {
         name: product.name,
         description: product.description,
         price: product.price,
+        originalPrice: product.originalPrice,
         stock: product.stock,
         COD: product.COD,
         additionalDetails: product.additionalDetails || {},
@@ -498,8 +685,8 @@ const ProductDetailsPage = () => {
     }));
   };
 
-  const validateVariantForm = (): FormErrors => {
-    const errors: FormErrors = {};
+  const validateVariantForm = (): VariantFormErrors => {
+    const errors: VariantFormErrors = {};
     if (!createVariantForm.name.trim())
       errors.name = "Variant name is required.";
     if (createVariantForm.price < 0) errors.price = "Price cannot be negative.";
@@ -613,9 +800,15 @@ const ProductDetailsPage = () => {
               <p className="text-sm text-muted-foreground">ID: {product.id}</p>
             </div>
           </div>
-          <Button variant="outline" onClick={() => router.push("/product")}>
-            <ArrowLeft className="h-4 w-4 mr-2" /> Back
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={openEditDialog}>
+              <Edit className="h-4 w-4 mr-2" />
+              Edit Product
+            </Button>
+            <Button variant="outline" onClick={() => router.push("/product")}>
+              <ArrowLeft className="h-4 w-4 mr-2" /> Back
+            </Button>
+          </div>
         </div>
       </motion.div>
 
@@ -644,6 +837,13 @@ const ProductDetailsPage = () => {
                 <span className="font-medium text-lg flex items-center">
                   <DollarSign className="h-4 w-4 mr-1 text-green-600" />
                   {formatCurrency(product.price)}
+                </span>
+              </div>
+               <div>
+                <p className="text-muted-foreground">Original Price</p>
+                <span className="font-medium text-lg flex items-center text-foreground">
+                  <DollarSign className="h-4 w-4 mr-1" />
+                  {formatCurrency(product.originalPrice)}
                 </span>
               </div>
               <div>
@@ -941,7 +1141,262 @@ const ProductDetailsPage = () => {
         </motion.div>
       </div>
 
-      {/* Dialogs */}
+      {/* --- Dialogs --- */}
+
+      {/* Edit Product Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Edit {product.name}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleUpdateProduct} className="space-y-4 pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label
+                  htmlFor="editName"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Product Name <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  id="editName"
+                  value={editForm.name}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, name: e.target.value })
+                  }
+                  disabled={isUpdating}
+                />
+                {editFormErrors.name && (
+                  <p className="text-sm text-destructive mt-1">
+                    {editFormErrors.name}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label
+                  htmlFor="editPrice"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Price <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  id="editPrice"
+                  type="number"
+                  value={editForm.price}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      price: e.target.valueAsNumber || 0,
+                    })
+                  }
+                  disabled={isUpdating}
+                />
+                {editFormErrors.price && (
+                  <p className="text-sm text-destructive mt-1">
+                    {editFormErrors.price}
+                  </p>
+                )}
+              </div>
+               <div>
+                <label
+                  htmlFor="editOriginalPrice"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Original Price <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  id="editOriginalPrice"
+                  type="number"
+                  value={editForm.originalPrice}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      originalPrice: e.target.valueAsNumber || 0,
+                    })
+                  }
+                  disabled={isUpdating}
+                />
+                {editFormErrors.originalPrice && (
+                  <p className="text-sm text-destructive mt-1">
+                    {editFormErrors.originalPrice}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label
+                  htmlFor="editStock"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Stock <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  id="editStock"
+                  type="number"
+                  value={editForm.stock}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      stock: e.target.valueAsNumber || 0,
+                    })
+                  }
+                  disabled={isUpdating}
+                />
+                {editFormErrors.stock && (
+                  <p className="text-sm text-destructive mt-1">
+                    {editFormErrors.stock}
+                  </p>
+                )}
+              </div>
+              <div className="md:col-span-2">
+                <label
+                  htmlFor="editDescription"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Description <span className="text-destructive">*</span>
+                </label>
+                <Textarea
+                  id="editDescription"
+                  value={editForm.description}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      description: e.target.value,
+                    })
+                  }
+                  disabled={isUpdating}
+                  rows={4}
+                />
+                {editFormErrors.description && (
+                  <p className="text-sm text-destructive mt-1">
+                    {editFormErrors.description}
+                  </p>
+                )}
+              </div>
+              <div className="md:col-span-2">
+                <label
+                  htmlFor="editSubCategory"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  SubCategory
+                </label>
+                <Select
+                  value={editForm.subCategoryId ?? "none"}
+                  onValueChange={(value) =>
+                    setEditForm({
+                      ...editForm,
+                      subCategoryId: value === "none" ? null : value,
+                    })
+                  }
+                  disabled={isUpdating}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a subcategory" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Subcategory</SelectItem>
+                    {subCategoriesOptions.map((subcat) => (
+                      <SelectItem key={subcat.id} value={subcat.id}>
+                        {subcat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="md:col-span-2">
+                <p className="block text-sm font-medium text-foreground mb-1">
+                  Additional Details <span className="text-destructive">*</span>
+                </p>
+                <div className="space-y-2">
+                  {editForm.additionalDetails.map((detail) => (
+                    <div key={detail.id} className="flex items-center gap-2">
+                      <Input
+                        placeholder="Key"
+                        value={detail.key}
+                        onChange={(e) =>
+                          handleAdditionalDetailChange(
+                            "edit",
+                            detail.id,
+                            "key",
+                            e.target.value
+                          )
+                        }
+                        disabled={isUpdating}
+                      />
+                      <Input
+                        placeholder="Value"
+                        value={detail.value}
+                        onChange={(e) =>
+                          handleAdditionalDetailChange(
+                            "edit",
+                            detail.id,
+                            "value",
+                            e.target.value
+                          )
+                        }
+                        disabled={isUpdating}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveAdditionalDetailField("edit", detail.id)}
+                        disabled={isUpdating}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  {editFormErrors.additionalDetails && (
+                    <p className="text-sm text-destructive mt-1">
+                      {editFormErrors.additionalDetails}
+                    </p>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleAddAdditionalDetailField("edit")}
+                    disabled={isUpdating}
+                  >
+                    <Plus className="h-4 w-4 mr-2" /> Add Detail
+                  </Button>
+                </div>
+              </div>
+              <div className="md:col-span-2 flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="editCOD"
+                  checked={editForm.COD}
+                  onChange={(e) => setEditForm({...editForm, COD: e.target.checked})}
+                  disabled={isUpdating}
+                  className="h-4 w-4 rounded"
+                />
+                <label htmlFor="editCOD" className="text-sm">COD Available</label>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsEditDialogOpen(false)}
+                disabled={isUpdating}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isUpdating}>
+                {isUpdating ? (
+                  <>
+                    <LoadingSpinner className="h-4 w-4 mr-2" /> Updating...
+                  </>
+                ) : (
+                  "Save Changes"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload Image Dialog */}
       <Dialog
         open={isUploadImageDialogOpen}
         onOpenChange={(open) => {
@@ -1032,6 +1487,8 @@ const ProductDetailsPage = () => {
           </form>
         </DialogContent>
       </Dialog>
+      
+      {/* Delete Image Dialog */}
       <Dialog
         open={isDeleteImageDialogOpen}
         onOpenChange={setIsDeleteImageDialogOpen}
@@ -1070,6 +1527,8 @@ const ProductDetailsPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      {/* Create Variant Dialog */}
       <Dialog
         open={isCreateVariantDialogOpen}
         onOpenChange={(open) => {

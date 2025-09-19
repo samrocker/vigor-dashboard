@@ -1,144 +1,203 @@
-// Sidebar.tsx
 "use client";
+
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { usePathname } from "next/navigation";
-import { useTheme } from "next-themes";
-import { navigationItems, appItems } from "@/constants/navigation"; // Assuming these are defined elsewhere
-import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { SidebarProps } from "@/types/sidebar";
 import Image from "next/image";
-import logo from "../../../public/images/logo.png";
-import UserDetails from "./UserDetails";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
+import {
+  LayoutGrid,
+  Users,
+  Tag,
+  Tags,
+  Package,
+  ShoppingCart,
+  Image as ImageIcon,
+  FileText,
+  GitBranch,
+  Settings,
+  ShieldHalf,
+  User as UserIcon,
+  LogOut,
+  Menu,
+  X,
+  ChevronsLeft,
+} from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
+import axiosInstance from "@/lib/axios";
+import { deleteTokens } from "@/lib/auth";
 import { User } from "@/types/schemas/user";
-import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton component
+import { NavigationItem } from "@/types/sidebar";
+import logo from "../../../public/images/logo.png";
 
-// Icons for clarity (you might already have these globally or in a separate icon file)
-const XIcon = () => (
-  <svg
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className="lucide lucide-x"
-  >
-    <path d="M18 6 6 18" />
-    <path d="m6 6 12 12" />
-  </svg>
-);
+// --- CUSTOM HOOK TO PREVENT HYDRATION ERRORS ---
+const useIsClient = () => {
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+  return isClient;
+};
 
-const MenuIcon = () => (
-  <svg
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className="lucide lucide-panel-left"
-  >
-    <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-    <line x1="9" x2="9" y1="3" y2="21" />
-  </svg>
-);
+// --- NAVIGATION DATA ---
+const navigationItems: NavigationItem[] = [
+  { name: "User", path: "/users", icon: <Users size={20} /> },
+  {
+    name: "Admin",
+    path: "/admin",
+    icon: <ShieldHalf size={20} />,
+    roles: ["SUPER"],
+  },
+  { name: "Categories", path: "/category", icon: <Tag size={20} /> },
+  { name: "Subcategories", path: "/subcategory", icon: <Tags size={20} /> },
+  { name: "Orders", path: "/order", icon: <Package size={20} /> },
+  {
+    name: "Images",
+    path: "/image",
+    icon: <ImageIcon size={20} />,
+    roles: ["SUPER"],
+  },
+  { name: "Products", path: "/product", icon: <Package size={20} /> },
+  { name: "Variants", path: "/variant", icon: <GitBranch size={20} /> },
+  { name: "Carts", path: "/cart", icon: <ShoppingCart size={20} /> },
+  { name: "Blogs", path: "/blog", icon: <FileText size={20} /> },
+  {
+    name: "Settings",
+    path: "/setting",
+    icon: <Settings size={20} />,
+    roles: ["SUPER"],
+  },
+];
 
-const CollapseIcon = () => (
-  <svg
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className="lucide lucide-chevrons-left"
-  >
-    <path d="m11 17-5-5 5-5" />
-    <path d="m18 17-5-5 5-5" />
-  </svg>
-);
+// --- USER DETAILS COMPONENT ---
+interface UserDetailsProps {
+  user: User | null;
+  isLoading: boolean;
+}
 
-// Main Sidebar Component (Expanded)
+const UserDetails = ({ user, isLoading }: UserDetailsProps) => {
+  const router = useRouter();
+  const handleLogout = () => {
+    deleteTokens();
+    router.push("/login");
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center space-x-4 border-t pt-4 mt-auto">
+        <Skeleton className="h-10 w-10 rounded-full" />
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-3 w-32" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="border-t pt-4 mt-auto">
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={() => router.push("/login")}
+        >
+          Login
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t pt-4 mt-auto">
+      <div className="flex items-center space-x-3 mb-4">
+        <div className="relative w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
+          {user.name ? user.name[0].toUpperCase() : "U"}
+        </div>
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold text-sm truncate block">
+            {user.name}
+          </span>
+          <span className="text-xs text-muted-foreground truncate block">
+            {user.email}
+          </span>
+          <Badge
+            variant={user.role === "SUPER" ? "default" : "secondary"}
+            className="mt-1"
+          >
+            {user.role} ADMIN
+          </Badge>
+        </div>
+      </div>
+      <Button variant="outline" className="w-full" onClick={handleLogout}>
+        Logout
+      </Button>
+    </div>
+  );
+};
+
+// --- EXPANDED SIDEBAR COMPONENT ---
+interface MainSidebarProps {
+  toggleSidebar: () => void;
+  isMobile: boolean;
+  user: User | null;
+  isLoadingUser: boolean;
+}
+
 const MainSidebar = ({
   toggleSidebar,
-  isMobile, // Renamed from isMobileOpen for clarity, reflects if the view is mobile
-}: SidebarProps) => {
+  isMobile,
+  user,
+  isLoadingUser,
+}: MainSidebarProps) => {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = React.useState(false);
-  const pathname = usePathname(); // Get current pathname
-  const [userRole, setUserRole] = React.useState<string | null>(null);
-  const [isLoadingUser, setIsLoadingUser] = useState(true); // New loading state for user data
-  const [isClient, setIsClient] = useState(false); // New state to track if client-side mounted
+  const pathname = usePathname();
 
-  // After mounting, we have access to the theme
-  React.useEffect(() => {
-    setMounted(true);
-    setIsClient(true); // Set client mounted after initial render
-  }, []);
-
-  const handleNavigation = (item: string, path?: string) => {
-    if (path) {
-      router.push(path);
-    }
-    // If on mobile, close the sidebar after navigation
+  const handleNavigation = (path: string) => {
+    router.push(path);
     if (isMobile) {
       toggleSidebar();
     }
   };
 
-  const handleUserFetched = (user: User | null) => {
-    if (user) {
-      setUserRole(user.role);
-    } else {
-      setUserRole(null);
-    }
-    setIsLoadingUser(false); // User data has been fetched (or failed to fetch)
-  };
-
-  // Prevent hydration mismatch by not rendering theme-dependent content until mounted
-  if (!mounted) {
-    return null; // or a loading skeleton
-  }
+  const filteredNavItems = navigationItems.filter(
+    (item) => !item.roles || (user && item.roles.includes(user.role))
+  );
 
   return (
     <div
       className={`
-        ${
-          isMobile
-            ? "fixed inset-y-0 left-0 w-full max-w-sm z-50 transform transition-transform duration-300 translate-x-0"
-            : "relative w-80 flex-shrink-0 transition-all duration-300 h-screen top-0"
-        }
-        bg-background border-r flex flex-col font-inter
-      `}
+      ${
+        isMobile
+          ? "fixed inset-y-0 left-0 w-full max-w-xs z-50 transform transition-transform duration-300 translate-x-0"
+          : "relative w-72 flex-shrink-0"
+      }
+      bg-background border-r flex flex-col h-screen
+    `}
     >
-      {/* Scrollable container for sidebar content */}
       <div className="flex flex-col h-full overflow-y-auto p-5">
-        {/* Top Bar - Fixed */}
-        <div className="flex justify-between items-center mb-5">
-          <div className="flex items-center space-x-2">
+        <div className="flex justify-between items-center mb-8">
+          <Link href="/" className="flex items-center space-x-2">
             <Image
               src={logo}
               alt="Vigor Bikes Logo"
-              width={1920}
-              height={1080}
-              className="w-36 h-auto dark:invert"
+              width={120}
+              height={30}
+              className="dark:invert"
+              priority
             />
-          </div>
-          <div className="flex items-center space-x-2">
-            <div
-              className="p-2 rounded-lg hover:bg-primary hover:text-primary-foreground cursor-pointer"
-              onClick={toggleSidebar}
-            >
-              {isMobile ? <XIcon /> : <CollapseIcon />}
-            </div>
+          </Link>
+          <div className="flex items-center space-x-1">
             <ThemeToggle
               isDark={resolvedTheme === "dark"}
               onToggle={() =>
@@ -146,215 +205,269 @@ const MainSidebar = ({
               }
               size="iconOnly"
             />
+            <button
+              onClick={toggleSidebar}
+              className="p-2 rounded-lg hover:bg-muted"
+            >
+              {isMobile ? <X size={20} /> : <ChevronsLeft size={20} />}
+            </button>
           </div>
         </div>
 
-        {/* Scrollable content */}
-        <div className="flex-1 space-y-8 mb-6">
-          {/* Navigation */}
-          <div>
-            <h3 className="text-xs text-muted-foreground uppercase tracking-wider mb-3">
-              NAVIGATION
-            </h3>
-            <div className="flex flex-col space-y-2">
-              {/* Only show skeletons if data is loading AND we are not yet on the client (initial server render) */}
-              {isLoadingUser && !isClient ? (
-                // Skeleton loading for navigation items
-                Array.from({ length: 5 }).map((_, index) => (
-                  <Skeleton key={index} className="h-10 w-full rounded-lg" />
-                ))
-              ) : (
-                navigationItems
-                  .filter((item) => {
-                    if (
-                      userRole !== "SUPER" &&
-                      (item.name === "Settings" || item.name === "Admin" || item.name === "Images")
-                    ) {
-                      return false;
-                    }
-                    return true;
-                  })
-                  .map((item) => (
-                    <div
-                      key={item.name}
-                      className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-colors duration-200
-                                ${
-                                  pathname === item.path // Use pathname instead of activeItem
-                                    ? "bg-primary text-primary-foreground"
-                                    : "hover:bg-primary/10 hover:text-primary text-muted-foreground"
-                                }`}
-                      onClick={() => handleNavigation(item.name, item.path)}
-                    >
-                      {item.icon}
-                      <span className="font-medium">{item.name}</span>
-                    </div>
-                  ))
-              )}
-            </div>
-          </div>
-        </div>
+        <nav className="flex-1 space-y-2">
+          {isLoadingUser
+            ? Array.from({ length: 7 }).map((_, index) => (
+                <Skeleton key={index} className="h-10 w-full rounded-lg" />
+              ))
+            : filteredNavItems.map((item) => (
+                <div
+                  key={item.name}
+                  className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-colors duration-200
+                  ${
+                    pathname === item.path
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => handleNavigation(item.path)}
+                >
+                  {item.icon}
+                  <span className="font-medium text-sm">{item.name}</span>
+                </div>
+              ))}
+        </nav>
 
-        {/* User Details - Fixed at bottom */}
-        <UserDetails onUserFetched={handleUserFetched} />
+        <UserDetails user={user} isLoading={isLoadingUser} />
       </div>
     </div>
   );
 };
 
-// Mini Sidebar Component (Collapsed)
-const MiniSidebar = ({ toggleSidebar }: SidebarProps) => {
+// --- COLLAPSED SIDEBAR COMPONENT ---
+interface MiniSidebarProps {
+  toggleSidebar: () => void;
+  user: User | null;
+  isLoadingUser: boolean;
+}
+
+const MiniSidebar = ({
+  toggleSidebar,
+  user,
+  isLoadingUser,
+}: MiniSidebarProps) => {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = React.useState(false);
-  const pathname = usePathname(); // Get current pathname
-  const [userRole, setUserRole] = React.useState<string | null>(null);
-  const [isLoadingUser, setIsLoadingUser] = useState(true); // New loading state for user data
-  const [isClient, setIsClient] = useState(false); // New state to track if client-side mounted
+  const pathname = usePathname();
 
-  // After mounting, we have access to the theme
-  React.useEffect(() => {
-    setMounted(true);
-    setIsClient(true); // Set client mounted after initial render
-  }, []);
-
-  const handleNavigation = (item: string, path?: string) => {
-    if (path) {
-      router.push(path);
-    }
+  const handleLogout = () => {
+    deleteTokens();
+    router.push("/login");
   };
 
-  const handleUserFetched = (user: User | null) => {
-    if (user) {
-      setUserRole(user.role);
-    } else {
-      setUserRole(null);
-    }
-    setIsLoadingUser(false); // User data has been fetched (or failed to fetch)
-  };
-
-  // Prevent hydration mismatch by not rendering theme-dependent content until mounted
-  if (!mounted) {
-    return null; // or a loading skeleton
-  }
+  const filteredNavItems = navigationItems.filter(
+    (item) => !item.roles || (user && item.roles.includes(user.role))
+  );
 
   return (
-    <div className="hidden sm:flex flex-col items-center py-6 px-3 bg-background border-r rounded-r-3xl shadow-lg flex-shrink-0 w-20 transition-all duration-300 h-screen">
-      <div className="flex flex-col items-center space-y-4 mb-8">
-        <div
-          className="p-2 rounded-lg hover:bg-primary hover:text-primary-foreground cursor-pointer"
-          onClick={toggleSidebar}
-        >
-          <MenuIcon />
-        </div>
-        <ThemeToggle
-          isDark={resolvedTheme === "dark"}
-          onToggle={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-          size="iconOnly"
-        />
-      </div>
+    <div className="hidden sm:flex flex-col items-center py-5 px-3 bg-background border-r flex-shrink-0 w-20 h-screen">
+      <button
+        onClick={toggleSidebar}
+        className="p-2 rounded-lg hover:bg-muted mb-4"
+      >
+        <Menu size={20} />
+      </button>
+      <ThemeToggle
+        isDark={resolvedTheme === "dark"}
+        onToggle={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+        size="iconOnly"
+      />
 
-      <div className="flex flex-col space-y-6 flex-grow">
-        {/* Only show skeletons if data is loading AND we are not yet on the client (initial server render) */}
-        {isLoadingUser && !isClient ? (
-          // Skeleton loading for navigation items in mini sidebar
-          Array.from({ length: 5 }).map((_, index) => (
-            <Skeleton key={index} className="h-8 w-8 rounded-lg" />
-          ))
-        ) : (
-          navigationItems
-            .filter((item) => {
-              if (
-                userRole !== "SUPER" &&
-                (item.name === "Settings" || item.name === "Admin" || item.name === "Images")
-              ) {
-                return false;
-              }
-              return true;
-            })
-            .map((item) => (
-              <div
-                key={item.name}
-                className={`p-2 rounded-lg cursor-pointer relative group font-bold
-                                ${
-                                  pathname === item.path // Use pathname instead of activeItem
-                                    ? "bg-primary/10 text-primary"
-                                    : "hover:bg-primary hover:text-accent-foreground text-muted-foreground"
-                                }`}
-                onClick={() => handleNavigation(item.name, item.path)}
-              >
-                {item.icon}
-                {/* Tooltip for active item */}
-                {pathname === item.path && ( // Use pathname instead of activeItem
-                  <span className="absolute left-full ml-4 top-1/2 -translate-y-1/2 bg-primary text-primary-foreground text-xs px-3 py-1 rounded-md whitespace-nowrap shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                    {item.name}
-                  </span>
-                )}
-                {/* Tooltip for all items on hover */}
-                {pathname !== item.path && ( // Use pathname instead of activeItem
-                  <span className="absolute left-full ml-4 top-1/2 -translate-y-1/2 bg-popover text-popover-foreground text-xs px-3 py-1 rounded-md whitespace-nowrap shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                    {item.name}
-                  </span>
-                )}
-              </div>
+      <nav className="flex flex-col items-center space-y-4 flex-grow mt-8">
+        {isLoadingUser
+          ? Array.from({ length: 7 }).map((_, index) => (
+              <Skeleton key={index} className="h-10 w-10 rounded-lg" />
             ))
+          : filteredNavItems.map((item) => (
+              <Link href={item.path} key={item.name} className="relative group">
+                <div
+                  className={`p-3 rounded-lg cursor-pointer
+                    ${
+                      pathname === item.path
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                    }`}
+                >
+                  {item.icon}
+                </div>
+                <span className="absolute left-full ml-3 top-1/2 -translate-y-1/2 bg-popover text-popover-foreground text-xs px-3 py-1.5 rounded-md whitespace-nowrap shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                  {item.name}
+                </span>
+              </Link>
+            ))}
+      </nav>
+
+      <div className="mt-auto">
+        {isLoadingUser ? (
+          <Skeleton className="h-10 w-10 rounded-full" />
+        ) : user ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="relative w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold hover:ring-2 hover:ring-primary/50">
+                {user.name ? user.name[0].toUpperCase() : "U"}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="center" className="w-56">
+              <div className="p-2">
+                <p className="font-semibold text-sm truncate">{user.name}</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {user.email}
+                </p>
+              </div>
+              <DropdownMenuItem onClick={() => router.push("/profile")}>
+                <UserIcon className="mr-2 h-4 w-4" />
+                <span>Profile</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="text-red-500 focus:text-red-500"
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Logout</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push("/login")}
+          >
+            <LogOut size={20} />
+          </Button>
         )}
       </div>
     </div>
   );
 };
 
-const Sidebar = () => {
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
-  const [isMobile, setIsMobile] = useState(false);
+// --- SKELETON COMPONENT FOR INITIAL RENDER ---
+const SidebarSkeleton = () => {
+  return (
+    <div className="relative w-72 flex-shrink-0 bg-background border-r flex-col h-screen p-5 hidden sm:flex">
+      <div className="flex justify-between items-center mb-8">
+        <Skeleton className="h-8 w-32" />
+        <div className="flex items-center space-x-1">
+          <Skeleton className="h-8 w-8 rounded-lg" />
+          <Skeleton className="h-8 w-8 rounded-lg" />
+        </div>
+      </div>
+      <div className="flex-1 space-y-2">
+        {Array.from({ length: 7 }).map((_, index) => (
+          <Skeleton key={index} className="h-10 w-full rounded-lg" />
+        ))}
+      </div>
+      <div className="flex items-center space-x-4 border-t pt-4 mt-auto">
+        <Skeleton className="h-10 w-10 rounded-full" />
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-3 w-32" />
+        </div>
+      </div>
+    </div>
+  );
+};
 
-  // Effect to determine if it's a mobile view and adjust sidebar state
+// --- MAIN EXPORTED COMPONENT ---
+const Sidebar = () => {
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
+  const isClient = useIsClient(); // Use the custom hook
+
   useEffect(() => {
     const handleResize = () => {
-      // Tailwind's 'sm' breakpoint is 640px
-      const currentIsMobile = window.innerWidth < 640;
+      const currentIsMobile = window.innerWidth < 768; // md breakpoint
       setIsMobile(currentIsMobile);
-
       if (currentIsMobile) {
-        // On mobile, sidebar should be collapsed by default
         setIsSidebarExpanded(false);
       } else {
-        // On desktop, sidebar should be expanded by default
         setIsSidebarExpanded(true);
       }
     };
-
+    handleResize();
     window.addEventListener("resize", handleResize);
-    handleResize(); // Call once on mount to set initial state
-
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const toggleSidebar = () => {
-    setIsSidebarExpanded(!isSidebarExpanded);
-  };
+  useEffect(() => {
+    const fetchUser = async () => {
+      setIsLoadingUser(true);
+      try {
+        const response = await axiosInstance.get(
+          "/admin/me?includeRelations=true"
+        );
+        if (response.data.status === "success") {
+          setUser(response.data.data.admin);
+        } else {
+          setUser(null);
+        }
+      } catch (err) {
+        setUser(null);
+        console.error("Failed to fetch user:", err);
+      } finally {
+        setIsLoadingUser(false);
+      }
+    };
+    fetchUser();
+  }, []);
 
-  return (
-    <>
-      {/* Sidebar Area */}
-      {isSidebarExpanded ? (
-        <MainSidebar
-          toggleSidebar={toggleSidebar}
-          isMobile={isMobile} // Pass isMobile to MainSidebar
-        />
-      ) : (
-        <MiniSidebar
-          toggleSidebar={toggleSidebar}
-        />
-      )}
+  const toggleSidebar = () => setIsSidebarExpanded(!isSidebarExpanded);
 
-      {/* Backdrop for mobile sidebar when expanded */}
-      {isMobile && isSidebarExpanded && (
-        <div
-          className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40"
+  // **** FIX: RENDER SKELETON ON SERVER AND INITIAL CLIENT RENDER ****
+  if (!isClient) {
+    return <SidebarSkeleton />;
+  }
+
+  if (isMobile) {
+    return (
+      <>
+        <button
           onClick={toggleSidebar}
-        ></div>
-      )}
-    </>
+          className="fixed top-4 left-4 z-50 p-2 rounded-md bg-background/50 backdrop-blur-sm sm:hidden"
+        >
+          <Menu size={24} />
+        </button>
+        {isSidebarExpanded && (
+          <MainSidebar
+            toggleSidebar={toggleSidebar}
+            isMobile={true}
+            user={user}
+            isLoadingUser={isLoadingUser}
+          />
+        )}
+        {isSidebarExpanded && (
+          <div
+            className="fixed inset-0 bg-black/60 z-40"
+            onClick={toggleSidebar}
+          ></div>
+        )}
+      </>
+    );
+  }
+
+  return isSidebarExpanded ? (
+    <MainSidebar
+      toggleSidebar={toggleSidebar}
+      isMobile={false}
+      user={user}
+      isLoadingUser={isLoadingUser}
+    />
+  ) : (
+    <MiniSidebar
+      toggleSidebar={toggleSidebar}
+      user={user}
+      isLoadingUser={isLoadingUser}
+    />
   );
 };
 

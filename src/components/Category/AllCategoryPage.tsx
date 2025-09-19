@@ -1,6 +1,11 @@
 "use client";
+
 import { ApiResponse, axiosInstance } from "@/lib/axios";
-import { CategoriesApiResponse, Category } from "@/types/schemas";
+import {
+  CategoriesApiResponse,
+  Category as OriginalCategory,
+  BatchImagesApiResponse,
+} from "@/types/schemas";
 import React, { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -9,16 +14,9 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
+  CardFooter,
 } from "@/components/ui/card";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableHead,
-  TableRow,
-  TableCell,
-} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,21 +27,19 @@ import {
   DialogTitle,
   DialogTrigger,
   DialogFooter,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import {
-  Calendar,
   Edit,
   FolderOpen,
   Plus,
   Trash2,
   Search,
-  ArrowUp,
-  ArrowDown,
   Eye,
   RefreshCw,
-  Info,
+  MoreHorizontal,
+  ImageIcon,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
@@ -54,6 +50,15 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+// Extend the original Category type to include the optional imageUrl
+type Category = OriginalCategory & { imageUrl?: string };
 
 // Helper function to format dates
 function formatDate(dateString: string) {
@@ -62,41 +67,25 @@ function formatDate(dateString: string) {
     year: "numeric",
     month: "short",
     day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 
 const AllCategoryPage = () => {
-  // State for categories list and loading/error states
   const [categories, setCategories] = useState<Category[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState(true);
-
-  // State for create form and image
   const [createForm, setCreateForm] = useState({ name: "", description: "" });
   const [isCreating, setIsCreating] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [createImageFile, setCreateImageFile] = useState<File | null>(null);
-
-  // State for update form and image
-  const [updateForm, setUpdateForm] = useState({
-    id: "",
-    name: "",
-    description: "",
-    imageFile: null as File | null, // <-- for update image
-  });
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
-
-  // State for delete
-  const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [categoryToDeleteId, setCategoryToDeleteId] = useState<string | null>(
-    null
+  const [createFormErrors, setCreateFormErrors] = useState<{ name?: string }>(
+    {}
   );
-
-  // State for search and sorting
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [updateFormErrors, setUpdateFormErrors] = useState<{ name?: string }>(
+    {}
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<keyof Category | null>("createdAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
@@ -104,14 +93,6 @@ const AllCategoryPage = () => {
     "createdAt"
   );
 
-  const [createFormErrors, setCreateFormErrors] = useState<{ name?: string }>(
-    {}
-  );
-  const [updateFormErrors, setUpdateFormErrors] = useState<{ name?: string }>(
-    {}
-  );
-
-  // Initialize useRouter for navigation
   const router = useRouter();
 
   useEffect(() => {
@@ -134,12 +115,50 @@ const AllCategoryPage = () => {
       const response = await axiosInstance.get<CategoriesApiResponse>(
         "/public/category"
       );
+
+      let fetchedCategories: Category[] = [];
       if (response.data.status === "success" && response.data.data) {
-        setCategories(response.data.data.categories || []);
+        fetchedCategories = response.data.data.categories || [];
         setTotal(response.data.data.total || 0);
       } else {
         toast.error(response.data.message || "Failed to fetch categories");
+        setLoading(false);
+        return;
       }
+
+      const imageIds = fetchedCategories
+        .map((cat) => cat.imageId)
+        .filter((id): id is string => id !== null);
+
+      if (imageIds.length > 0) {
+        try {
+          const imageRes = await axiosInstance.post<BatchImagesApiResponse>(
+            "/public/image/batch",
+            { ids: imageIds }
+          );
+
+          if (
+            imageRes.data.status === "success" &&
+            imageRes.data.data?.images
+          ) {
+            const imageUrlMap = new Map<string, string>();
+            imageRes.data.data.images.forEach((image) => {
+              imageUrlMap.set(image.id, image.url);
+            });
+
+            fetchedCategories = fetchedCategories.map((cat) => ({
+              ...cat,
+              imageUrl: cat.imageId ? imageUrlMap.get(cat.imageId) : undefined,
+            }));
+          } else {
+            toast.warning("Could not fetch some category images.");
+          }
+        } catch (imgErr) {
+          toast.warning("Could not fetch category images.");
+        }
+      }
+
+      setCategories(fetchedCategories);
     } catch (err: any) {
       toast.error(
         err.message || "An unexpected error occurred while fetching categories."
@@ -185,7 +204,6 @@ const AllCategoryPage = () => {
     return currentCategories;
   }, [categories, searchQuery, sortKey, sortDirection]);
 
-  // ----------- IMAGE-UPLOAD-FIRST WORKFLOW FOR CREATE ------------
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateFormErrors({});
@@ -198,7 +216,6 @@ const AllCategoryPage = () => {
     try {
       let imageId: string | undefined;
       if (createImageFile) {
-        // ... (image upload logic is unchanged)
         const formData = new FormData();
         formData.append("image", createImageFile);
         const imageRes = await axiosInstance.post("/admin/image", formData, {
@@ -215,27 +232,17 @@ const AllCategoryPage = () => {
           return;
         }
       }
-
-      // --- SOLUTION ---
-      // 1. Define the payload with a specific type.
       const payload: { name: string; description?: string; imageId?: string } =
         {
           name: createForm.name.trim(),
         };
-
-      // 2. Only add 'description' if it's not empty.
       if (createForm.description.trim()) {
         payload.description = createForm.description.trim();
       }
-
-      // 3. Add 'imageId' if it exists.
       if (imageId) {
         payload.imageId = imageId;
       }
-      // --- END OF SOLUTION ---
-
       const categoryRes = await axiosInstance.post("/admin/category", payload);
-
       if (
         categoryRes.data.status === "success" &&
         categoryRes.data.data?.category
@@ -249,7 +256,6 @@ const AllCategoryPage = () => {
         toast.error(categoryRes.data.message || "Failed to create category");
       }
     } catch (err: any) {
-      // ... (error handling is unchanged)
       let apiMessage =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
@@ -267,100 +273,102 @@ const AllCategoryPage = () => {
     }
   };
 
-  const openUpdateDialog = (category: Category) => {
-    setUpdateForm({
-      id: category.id,
-      name: category.name,
-      description: category.description || "",
-      imageFile: null,
-    });
-    setIsUpdateDialogOpen(true);
-  };
+  const handleUpdate = async (
+    e: React.FormEvent<HTMLFormElement>,
+    categoryId: string
+  ) => {
+    e.preventDefault();
+    setUpdateFormErrors({});
 
-  // Edit: upload image (if new), then use that imageId in PATCH
-const handleUpdate = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setUpdateFormErrors({});
-  const errors = validateCategoryForm(updateForm.name);
-  if (Object.keys(errors).length > 0) {
-    setUpdateFormErrors(errors);
-    return;
-  }
-  setIsUpdating(true);
-  try {
-    let imageId: string | undefined;
-    if (updateForm.imageFile) {
-      // ... (image upload logic is unchanged)
-      const formData = new FormData();
-      formData.append("image", updateForm.imageFile);
-      const imageRes = await axiosInstance.post("/admin/image", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      if (imageRes?.data?.status === "success" && imageRes?.data?.data?.image?.id) {
-        imageId = imageRes.data.data.image.id as string;
-      } else {
-        toast.error(imageRes?.data?.message || "Failed to upload image");
-        setIsUpdating(false);
-        return;
+    const formData = new FormData(e.currentTarget);
+    const name = formData.get("name") as string;
+    const description = formData.get("description") as string;
+    const imageFile = formData.get("imageFile") as File;
+
+    const errors = validateCategoryForm(name);
+    if (Object.keys(errors).length > 0) {
+      setUpdateFormErrors(errors);
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      let imageId: string | undefined;
+      if (imageFile && imageFile.size > 0) {
+        const imageFormData = new FormData();
+        imageFormData.append("image", imageFile);
+        const imageRes = await axiosInstance.post(
+          "/admin/image",
+          imageFormData,
+          {
+            headers: { "Content-Type": "multipart/form-data" },
+          }
+        );
+        if (
+          imageRes?.data?.status === "success" &&
+          imageRes?.data?.data?.image?.id
+        ) {
+          imageId = imageRes.data.data.image.id as string;
+        } else {
+          toast.error(imageRes?.data?.message || "Failed to upload image");
+          setIsUpdating(false);
+          return;
+        }
       }
-    }
 
-    // --- SOLUTION ---
-    const payload: { name: string; description?: string; imageId?: string } = {
-      name: updateForm.name.trim(),
-    };
+      const payload: { name: string; description?: string; imageId?: string } =
+        {
+          name: name.trim(),
+        };
+      if (description.trim()) {
+        payload.description = description.trim();
+      }
+      if (imageId) {
+        payload.imageId = imageId;
+      }
 
-    if (updateForm.description.trim()) {
-      payload.description = updateForm.description.trim();
-    }
-    
-    if (imageId) {
-      payload.imageId = imageId;
-    }
-    // --- END OF SOLUTION ---
+      const response = await axiosInstance.patch(
+        `/admin/category/${categoryId}`,
+        payload
+      );
 
-    const response = await axiosInstance.patch(
-      `/admin/category/${updateForm.id}`,
-      payload
-    );
-
-    if (response.data.status === "success") {
-      // It's better to refetch data to guarantee UI consistency
-      fetchCategoriesData(); 
-      setIsUpdateDialogOpen(false);
-      toast.success("Category updated successfully");
-    } else {
-      toast.error(response.data.message || "Failed to update category");
+      if (response.data.status === "success") {
+        toast.success("Category updated successfully");
+        fetchCategoriesData();
+        // This will programmatically close all shadcn dialogs.
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      } else {
+        toast.error(response.data.message || "Failed to update category");
+      }
+    } catch (err: any) {
+      let apiMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Something went wrong. Please try again.";
+      if (
+        typeof apiMessage === "string" &&
+        apiMessage.toLowerCase().includes("duplicate")
+      ) {
+        apiMessage = "A category with this name already exists.";
+      }
+      toast.error(apiMessage);
+    } finally {
+      setIsUpdating(false);
+      setUpdateFormErrors({});
     }
-  } catch (err: any) {
-    // ... (error handling is unchanged)
-    let apiMessage = err?.response?.data?.message || err?.response?.data?.error || err?.message || "Something went wrong. Please try again.";
-    if (typeof apiMessage === "string" && apiMessage.toLowerCase().includes("duplicate")) {
-      apiMessage = "A category with this name already exists.";
-    }
-    toast.error(apiMessage);
-  } finally {
-    setIsUpdating(false);
-  }
-};
-
-  const handleDelete = (id: string) => {
-    setCategoryToDeleteId(id);
-    setIsDeleteDialogOpen(true);
   };
 
-  const handleConfirmDelete = async () => {
-    if (!categoryToDeleteId) return;
-    setIsDeleting(categoryToDeleteId);
+  const handleConfirmDelete = async (categoryId: string) => {
+    if (!categoryId) return;
+    setIsDeleting(categoryId);
     try {
       const response = await axiosInstance.delete(
-        `/admin/category/${categoryToDeleteId}`
+        `/admin/category/${categoryId}`
       );
       if (response.data.status === "success") {
-        setCategories(
-          categories.filter((cat) => cat.id !== categoryToDeleteId)
-        );
-        setTotal(total - 1);
+        setCategories((prev) => prev.filter((cat) => cat.id !== categoryId));
+        setTotal((prevTotal) => prevTotal - 1);
         toast.success("Category deleted successfully");
       } else {
         toast.error(response.data.message || "Failed to delete category");
@@ -374,27 +382,7 @@ const handleUpdate = async (e: React.FormEvent) => {
       toast.error(apiMessage);
     } finally {
       setIsDeleting(null);
-      setIsDeleteDialogOpen(false);
-      setCategoryToDeleteId(null);
     }
-  };
-
-  const handleSort = (key: keyof Category) => {
-    if (sortKey === key) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-    } else {
-      setSortKey(key);
-      setSortDirection("asc");
-    }
-  };
-
-  const renderSortIcon = (key: keyof Category) => {
-    if (sortKey !== key) return null;
-    return sortDirection === "asc" ? (
-      <ArrowUp className="ml-1 h-3 w-3 inline" />
-    ) : (
-      <ArrowDown className="ml-1 h-3 w-3 inline" />
-    );
   };
 
   const handleViewDetails = (categoryId: string) => {
@@ -403,7 +391,6 @@ const handleUpdate = async (e: React.FormEvent) => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header section with title and Add Category button */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -459,6 +446,11 @@ const handleUpdate = async (e: React.FormEvent) => {
                       required
                       maxLength={100}
                     />
+                    {createFormErrors.name && (
+                      <span className="text-destructive text-xs mt-1 block">
+                        {createFormErrors.name}
+                      </span>
+                    )}
                   </div>
                   <div>
                     <label
@@ -503,11 +495,6 @@ const handleUpdate = async (e: React.FormEvent) => {
                       rows={3}
                       maxLength={500}
                     />
-                    {createFormErrors.name && (
-                      <span className="text-destructive text-xs mt-1 block">
-                        {createFormErrors.name}
-                      </span>
-                    )}
                   </div>
                   <DialogFooter className="flex flex-col sm:flex-row justify-end gap-3">
                     <Button
@@ -542,7 +529,6 @@ const handleUpdate = async (e: React.FormEvent) => {
         transition={{ delay: 0.1, duration: 0.5 }}
         className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
       >
-        {/* Stat Cards */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -569,7 +555,6 @@ const handleUpdate = async (e: React.FormEvent) => {
           </Card>
         </motion.div>
 
-        {/* Search Input and Sort Dropdown */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -591,7 +576,6 @@ const handleUpdate = async (e: React.FormEvent) => {
                 />
               </div>
               <div className="flex flex-row gap-4 items-center">
-                {/* Refresh Button */}
                 <Button
                   variant="outline"
                   onClick={fetchCategoriesData}
@@ -603,7 +587,6 @@ const handleUpdate = async (e: React.FormEvent) => {
                   />
                   Refresh
                 </Button>
-                {/* Sort Dropdown */}
                 <div className="relative">
                   <label htmlFor="sort-dropdown" className="sr-only">
                     Sort by
@@ -619,7 +602,7 @@ const handleUpdate = async (e: React.FormEvent) => {
                   >
                     <SelectTrigger
                       id="sort-dropdown"
-                      className="w-[220px] pl-3 pr-4 py-2 border border-input bg-background rounded-md text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-[220px] pl-3 pr-4 py-2"
                     >
                       <SelectValue placeholder="Sort by" />
                     </SelectTrigger>
@@ -636,57 +619,29 @@ const handleUpdate = async (e: React.FormEvent) => {
           </Card>
         </motion.div>
 
-        {/* Table/skeleton/UI/Main content is unchanged from your code, including table/search/delete/edit */}
-
-        {loading ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35, duration: 0.5 }}
-          >
-            <Card className="border-border shadow-sm">
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {[...Array(5)].map((_, index) => (
-                      <TableRow key={index}>
-                        <TableCell>
-                          <Skeleton className="h-4 w-32" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-48" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-28" />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end space-x-2">
-                            <Skeleton className="h-8 w-16" />
-                            <Skeleton className="h-8 w-16" />
-                            <Skeleton className="h-8 w-16" />
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ) : filteredAndSortedCategories.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35, duration: 0.5 }}
-          >
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35, duration: 0.5 }}
+        >
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {[...Array(8)].map((_, index) => (
+                <Card key={index} className="overflow-hidden">
+                  <Skeleton className="h-40 w-full" />
+                  <CardContent className="p-4">
+                    <Skeleton className="h-6 w-3/4 mb-2" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-full mt-1" />
+                  </CardContent>
+                  <CardFooter className="p-4 flex justify-between items-center">
+                    <Skeleton className="h-6 w-24" />
+                    <Skeleton className="h-8 w-8 rounded-full" />
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          ) : filteredAndSortedCategories.length === 0 ? (
             <Card className="border-border">
               <CardContent className="pt-6">
                 <div className="text-center py-12">
@@ -695,8 +650,8 @@ const handleUpdate = async (e: React.FormEvent) => {
                     No categories found
                   </h3>
                   <p className="text-muted-foreground mb-4">
-                    Adjust your search or filters, or get started by creating
-                    your first category
+                    Adjust your search or filters, or create your first
+                    category.
                   </p>
                   <Button onClick={() => setIsCreateDialogOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" />
@@ -705,236 +660,221 @@ const handleUpdate = async (e: React.FormEvent) => {
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35, duration: 0.5 }}
-          >
-            <Card className="border-border shadow-sm">
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead
-                        className="cursor-pointer hover:text-foreground"
-                        onClick={() => handleSort("name")}
-                      >
-                        Name {renderSortIcon("name")}
-                      </TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead
-                        className="cursor-pointer hover:text-foreground"
-                        onClick={() => handleSort("createdAt")}
-                      >
-                        Created {renderSortIcon("createdAt")}
-                      </TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredAndSortedCategories.map((category) => (
-                      <TableRow key={category.id}>
-                        <TableCell className="font-medium">
-                          {category.name}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground max-w-md truncate">
-                          {category.description || "No description"}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          <div className="flex items-center space-x-1">
-                            <span>{formatDate(category.createdAt)}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end space-x-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleViewDetails(category.id)}
-                              className="hover:text-primary hover:bg-primary/10 border-border"
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              View
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openUpdateDialog(category)}
-                              className="hover:text-primary hover:bg-primary/10 border-border"
-                              disabled={loading}
-                            >
-                              <Edit className="h-4 w-4 mr-1" />
-                              Edit
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDelete(category.id)}
-                              disabled={isDeleting === category.id || loading}
-                              className="hover:bg-destructive/10 hover:border-destructive hover:text-destructive"
-                            >
-                              {isDeleting === category.id ? (
-                                <div className="flex items-center">
-                                  <LoadingSpinner className="h-4 w-4 mr-1 text-destructive" />
-                                  Deleting...
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {filteredAndSortedCategories.map((category) => (
+                <motion.div
+                  key={category.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <Card className="h-full flex flex-col overflow-hidden transition-shadow hover:shadow-lg">
+                    <CardHeader className="p-0">
+                      <div className="aspect-video w-full bg-muted flex items-center justify-center">
+                        {category.imageUrl ? (
+                          <img
+                            src={category.imageUrl}
+                            alt={category.name}
+                            className="h-full max-h-[200px] w-auto object-cover"
+                          />
+                        ) : (
+                          <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-4 flex-grow">
+                      <CardTitle className="text-lg font-semibold truncate">
+                        {category.name}
+                      </CardTitle>
+                      <CardDescription className="mt-1 text-sm line-clamp-2">
+                        {category.description || "No description available."}
+                      </CardDescription>
+                    </CardContent>
+                    <CardFooter className="p-4 bg-muted/50 flex justify-between items-center">
+                      <div className="text-xs text-muted-foreground">
+                        {formatDate(category.createdAt)}
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                            <span className="sr-only">Actions</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => handleViewDetails(category.id)}
+                          >
+                            <Eye className="mr-2 h-4 w-4" />
+                            <span>View</span>
+                          </DropdownMenuItem>
+
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <DropdownMenuItem
+                                onSelect={(e) => e.preventDefault()}
+                              >
+                                <Edit className="mr-2 h-4 w-4" />
+                                <span>Edit</span>
+                              </DropdownMenuItem>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-md">
+                              <DialogHeader>
+                                <DialogTitle>Edit Category</DialogTitle>
+                              </DialogHeader>
+                              <form
+                                onSubmit={(e) => handleUpdate(e, category.id)}
+                                className="space-y-4"
+                              >
+                                <div>
+                                  <label
+                                    htmlFor="updateName"
+                                    className="block text-sm font-medium text-foreground mb-1"
+                                  >
+                                    Name{" "}
+                                    <span className="text-destructive">*</span>
+                                  </label>
+                                  <Input
+                                    id="updateName"
+                                    name="name"
+                                    type="text"
+                                    defaultValue={category.name}
+                                    placeholder="Enter category name"
+                                    disabled={isUpdating}
+                                    required
+                                    maxLength={100}
+                                  />
+                                  {updateFormErrors.name && (
+                                    <span className="text-destructive text-xs mt-1 block">
+                                      {updateFormErrors.name}
+                                    </span>
+                                  )}
                                 </div>
-                              ) : (
-                                <>
-                                  <Trash2 className="h-4 w-4 mr-1" />
-                                  Delete
-                                </>
-                              )}
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
+                                <div>
+                                  <label
+                                    htmlFor="updateImage"
+                                    className="block text-sm font-medium text-foreground mb-1"
+                                  >
+                                    Replace Image (Optional)
+                                  </label>
+                                  <Input
+                                    id="updateImage"
+                                    name="imageFile"
+                                    type="file"
+                                    accept="image/*"
+                                    className="h-fit file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                                    disabled={isUpdating}
+                                  />
+                                </div>
+                                <div>
+                                  <label
+                                    htmlFor="updateDescription"
+                                    className="block text-sm font-medium text-foreground mb-1"
+                                  >
+                                    Description
+                                  </label>
+                                  <Textarea
+                                    id="updateDescription"
+                                    name="description"
+                                    defaultValue={category.description || ""}
+                                    placeholder="Enter category description"
+                                    disabled={isUpdating}
+                                    rows={3}
+                                    maxLength={500}
+                                  />
+                                </div>
+                                <DialogFooter>
+                                  <DialogClose asChild>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      disabled={isUpdating}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </DialogClose>
+                                  <Button type="submit" disabled={isUpdating}>
+                                    {isUpdating ? (
+                                      <div className="flex items-center">
+                                        <LoadingSpinner className="h-4 w-4 mr-2" />
+                                        Updating...
+                                      </div>
+                                    ) : (
+                                      "Update Category"
+                                    )}
+                                  </Button>
+                                </DialogFooter>
+                              </form>
+                            </DialogContent>
+                          </Dialog>
+
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                disabled={isDeleting === category.id}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Delete</span>
+                              </DropdownMenuItem>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-md">
+                              <DialogHeader>
+                                <DialogTitle>Confirm Deletion</DialogTitle>
+                              </DialogHeader>
+                              <p>
+                                Are you sure you want to delete the category "
+                                <strong>{category.name}</strong>"? This action
+                                cannot be undone.
+                              </p>
+                              <DialogFooter>
+                                <DialogClose asChild>
+                                  <Button
+                                    variant="outline"
+                                    disabled={!!isDeleting}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </DialogClose>
+                                <Button
+                                  variant="destructive"
+                                  onClick={() =>
+                                    handleConfirmDelete(category.id)
+                                  }
+                                  disabled={!!isDeleting}
+                                >
+                                  {isDeleting === category.id ? (
+                                    <>
+                                      <LoadingSpinner className="h-4 w-4 mr-1" />
+                                      Deleting...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Trash2 className="h-4 w-4 mr-1" />
+                                      Delete
+                                    </>
+                                  )}
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </CardFooter>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </motion.div>
       </motion.div>
-
-      {/* ------- UPDATE CATEGORY DIALOG -------- */}
-      <Dialog open={isUpdateDialogOpen} onOpenChange={setIsUpdateDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Category</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleUpdate} className="space-y-4">
-            <div>
-              <label
-                htmlFor="updateName"
-                className="block text-sm font-medium text-foreground mb-1"
-              >
-                Name <span className="text-destructive">*</span>
-              </label>
-              <Input
-                id="updateName"
-                type="text"
-                value={updateForm.name}
-                onChange={(e) =>
-                  setUpdateForm({ ...updateForm, name: e.target.value })
-                }
-                placeholder="Enter category name"
-                disabled={isUpdating || loading}
-                required
-                maxLength={100}
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="updateImage"
-                className="block text-sm font-medium text-foreground mb-1"
-              >
-                Replace Image
-              </label>
-              <Input
-                id="updateImage"
-                type="file"
-                accept="image/*"
-                onChange={(e) =>
-                  setUpdateForm({
-                    ...updateForm,
-                    imageFile: e.target.files ? e.target.files[0] : null,
-                  })
-                }
-                className="h-fit file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
-                disabled={isUpdating || loading}
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="updateDescription"
-                className="block text-sm font-medium text-foreground mb-1"
-              >
-                Description
-              </label>
-              <Textarea
-                id="updateDescription"
-                value={updateForm.description}
-                onChange={(e) =>
-                  setUpdateForm({ ...updateForm, description: e.target.value })
-                }
-                placeholder="Enter category description"
-                disabled={isUpdating || loading}
-                rows={3}
-                maxLength={500}
-              />
-              {updateFormErrors.name && (
-                <span className="text-destructive text-xs mt-1 block">
-                  {updateFormErrors.name}
-                </span>
-              )}
-            </div>
-            <DialogFooter className="flex flex-col sm:flex-row justify-end gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsUpdateDialogOpen(false)}
-                disabled={isUpdating || loading}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isUpdating || loading}>
-                {isUpdating ? (
-                  <div className="flex items-center">
-                    <LoadingSpinner className="h-4 w-4 mr-2" />
-                    Updating...
-                  </div>
-                ) : (
-                  "Update Category"
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Category Dialog */}
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Confirm Deletion</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-muted-foreground">
-              Are you sure you want to delete this category? This action cannot
-              be undone.
-            </p>
-            <DialogFooter className="flex flex-col sm:flex-row justify-end gap-3">
-              <Button
-                variant="outline"
-                onClick={() => setIsDeleteDialogOpen(false)}
-                disabled={isDeleting === categoryToDeleteId || loading}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={handleConfirmDelete}
-                disabled={isDeleting === categoryToDeleteId || loading}
-              >
-                {isDeleting === categoryToDeleteId ? (
-                  <div className="flex items-center">
-                    <LoadingSpinner className="h-4 w-4 mr-1 text-destructive" />
-                    Deleting...
-                  </div>
-                ) : (
-                  <>
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Delete
-                  </>
-                )}
-              </Button>
-            </DialogFooter>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
