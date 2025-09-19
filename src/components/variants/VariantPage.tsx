@@ -806,5 +806,5 @@ const VariantDetailsPage = () => {
     </div>
   );
 };
-
+ 
 export default VariantDetailsPage;
